@@ -56,6 +56,8 @@ Para comprobar la sintaxis Lua y las regresiones simuladas uso Fengari 0.1.4. La
 
 **TheDalex** — autor de The Second Shadow.
 
+Usé herramientas de inteligencia artificial como apoyo durante la elaboración de este mod.
+
 Gracias a los autores de **SplitScreenMod** y al equipo de **UE4SS** por la base con la que empecé a trabajar en la pantalla dividida. [Créditos completos y avisos de terceros](CREDITOS.md).
 
 Código propio y documentación bajo [MIT](LICENSE). Little Nightmares II y sus recursos pertenecen a sus respectivos titulares. Este es un mod de fans no oficial, sin afiliación con Tarsier Studios ni Bandai Namco Entertainment.

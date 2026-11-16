@@ -4,6 +4,8 @@
 
 Soy **TheDalex**, autor de The Second Shadow. Este es mi proyecto para adaptar el cooperativo local a Little Nightmares II.
 
+Usé herramientas de inteligencia artificial como apoyo durante la elaboración de este mod.
+
 ## Base de pantalla dividida
 
 Quiero agradecer a los autores de **SplitScreenMod**, distribuido con **UE4SS**, por la base de pantalla dividida con la que empecé este proyecto. A partir de ella trabajé en la adaptación para Little Nightmares II.
