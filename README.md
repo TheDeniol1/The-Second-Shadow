@@ -8,15 +8,15 @@ Con este mod puedes jugar con otra persona en el mismo PC y acompañar a Mono co
 
 **v0.7.0 Alpha · Windows x64 · Edición original de Steam · MIT**
 
-> Esta es una alpha. Probé el capítulo uno hasta la muerte del Cazador, el uso de teclado y mando y que los ajustes se guarden al reiniciar. Todavía me falta probar el resto de la campaña. Antes de publicar añadí un parche para recuperar el teclado de P1 tras cargar o reaparecer; el ZIP con ese parche pasó las pruebas automatizadas, pero aún no he repetido el recorrido con él.
+> Esta es una alpha. Probé el capítulo uno hasta la muerte del Cazador, el uso de teclado y mando y que los ajustes se guarden al reiniciar. También confirmé en partida que P1 recupera el teclado después de cargar y que las apariencias de Six y Dark Six cambian según la historia. Todavía me falta probar el resto de la campaña.
 
 ## Qué incluye
 
 - Cooperativo local para dos jugadores con teclado compartido o un mando y un teclado.
 - Cámara compartida y pantalla dividida horizontal o vertical.
 - Menú en español e inglés, controles de teclado de P2 reasignables y preferencias guardadas.
-- Sombreros para P2 Mono y apariencia opcional de Six, con cambios visuales todavía pendientes de verificación.
-- Muerte compartida, reaparición de P2 tras los checkpoints, llamadas y teletransporte entre compañeros.
+- Sombreros para P2 Mono y apariencia opcional de Six. P2 alterna entre Dark Six, la ropa inicial de Six y el impermeable amarillo según la historia.
+- Muerte compartida, reaparición de P2 tras los checkpoints, grito para llamar al compañero y teletransporte.
 - Rescate de cornisa y ayudas experimentales de rescate aéreo y salto.
 
 ## Antes de jugar

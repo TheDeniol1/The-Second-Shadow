@@ -30,7 +30,7 @@ Dejé los eventos de P2, el rescate aéreo y la ayuda de salto desactivados al e
 
 Abre la edición original. **F7** invita o retira a P2; **F6** abre el menú. Para la introducción conjunta, activa P2 antes de comenzar una partida nueva. Consulta CONTROLES.md en el ZIP o la guía de controles del repositorio.
 
-Probé teclado y mando, que los ajustes se conserven al reiniciar y el capítulo uno hasta la muerte del Cazador. Después añadí el parche de recuperación del teclado de P1. Todavía no he repetido el recorrido con ese ZIP final ni comprobado toda la campaña.
+En partida confirmé el uso de teclado y mando, que los ajustes se conserven al reiniciar y que P1 recupera el teclado después de cargar. También probé el capítulo uno hasta la muerte del Cazador. El resto de la campaña sigue pendiente de pruebas.
 
 ## Instalaciones existentes y actualizaciones
 

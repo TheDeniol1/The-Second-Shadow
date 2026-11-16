@@ -4,10 +4,10 @@ Esta es la primera versión pública de The Second Shadow. Puedes jugar en coope
 
 También incluye teletransporte, muerte compartida y ayudas experimentales. Antes de jugar, revisa la [instalación](docs/INSTALACION.md) y las [limitaciones](docs/LIMITACIONES.md).
 
-## Corrección incluida antes de publicar
+## Recuperación del teclado de P1
 
-Añadí un parche para recuperar el teclado de P1 cuando deja de responder después de cargar o reaparecer. La corrección usa el adaptador ln2_native_21.dll.
+El adaptador `ln2_native_21.dll` recupera el teclado de P1 si deja de responder después de una carga. Confirmé en partida que P1 volvió a responder tras probar la corrección.
 
 ## Qué he probado
 
-Probé teclado y mando, que los ajustes se guarden al reiniciar y el capítulo uno hasta la muerte del Cazador. Después incorporé el parche de P1 al ZIP. Las pruebas automatizadas de esa revisión pasaron; aún no he repetido el recorrido con ese paquete final. El resto de la campaña sigue pendiente.
+Probé teclado y mando, que los ajustes se guarden al reiniciar, el capítulo uno hasta la muerte del Cazador y el grito para llamar al compañero. También confirmé el cambio de apariencia de P2 entre Dark Six, la ropa inicial de Six y el impermeable amarillo. La campaña completa sigue pendiente.

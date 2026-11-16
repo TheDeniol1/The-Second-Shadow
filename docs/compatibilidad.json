@@ -16,8 +16,10 @@
   "public_download_verified": true,
   "download_url": "https://github.com/UE4SS-RE/RE-UE4SS/releases/download/experimental/zDEV-UE4SS_v3.0.1-1161-g6eb3d9bc.zip",
   "verified_date": "2026-11-16",
-  "verification": "Descarga nueva desde GitHub; SHA-256 del ZIP y de UE4SS.dll coinciden con la instalacion de desarrollo.",
+  "verification": "Descarga de GitHub verificada. Se cotejaron las huellas SHA-256 del ZIP de UE4SS y de la DLL instalada.",
   "clean_gameplay_test": "user_confirmed_chapter_one_through_hunter_keyboard_gamepad_settings_persistence_before_native21_package",
+  "native21_gameplay_test": "user_confirmed_p1_keyboard_recovery_after_loading",
+  "six_appearance_gameplay_test": "user_confirmed_dark_six_jumper_and_yellow_raincoat_transitions",
   "default_preferences": "configuracion/preferences-default.ini",
   "native_adapter": {
     "file": "ln2_native_21.dll",
