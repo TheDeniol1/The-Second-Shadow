@@ -1,0 +1,12 @@
+node_modules/
+preferences.ini
+*.log
+*.pdb
+*.def
+*.zip
+.env
+.env.*
+!.env.example
+backups/
+dist/
+tools/native-build/tcc/

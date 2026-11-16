@@ -1,0 +1,26 @@
+{
+  "game": "Little Nightmares II original, Steam, Windows x64 / UE 4.24",
+  "runtime_banner": "UE4SS v3.0.1 Beta #0 - Git SHA #5418fa4e",
+  "local_archive": "zDEV-UE4SS_v3.0.1-1161-g6eb3d9bc.zip",
+  "archive_sha256": "580a244bc30352cfd0d0019c4c63726c2bddd5bb04ef91f985df237aa81b06e9",
+  "runtime": {
+    "sha256": "f176dc36fd2bc7b8211dde6ba54ade6f66da5c8f3a79e3017a85b45c215e8242",
+    "pe_timestamp": "0x6ac43103",
+    "image_size": "0x13ba000"
+  },
+  "executable": {
+    "sha256": "2920c17031003a713eb1b6fc4057c28ae98fde5900ebc6ff93e488dbf11bd1c9",
+    "pe_timestamp": "0x615aa6d1",
+    "image_size": "0x4517000"
+  },
+  "public_download_verified": true,
+  "download_url": "https://github.com/UE4SS-RE/RE-UE4SS/releases/download/experimental/zDEV-UE4SS_v3.0.1-1161-g6eb3d9bc.zip",
+  "verified_date": "2026-11-16",
+  "verification": "Descarga nueva desde GitHub; SHA-256 del ZIP y de UE4SS.dll coinciden con la instalacion de desarrollo.",
+  "clean_gameplay_test": "user_confirmed_chapter_one_through_hunter_keyboard_gamepad_settings_persistence_before_native21_package",
+  "default_preferences": "configuracion/preferences-default.ini",
+  "native_adapter": {
+    "file": "ln2_native_21.dll",
+    "sha256": "fc63ea6e26e1739c982615913f77181914d1d170539dc1bd2ac0ea7bb9d413df"
+  }
+}

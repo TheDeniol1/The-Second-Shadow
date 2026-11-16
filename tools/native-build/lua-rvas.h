@@ -1,0 +1,11 @@
+#define RVA_lua_gettop 0xC63BD0ULL
+#define RVA_lua_tointegerx 0xC64F30ULL
+#define RVA_lua_tonumberx 0xC65030ULL
+#define RVA_lua_pushboolean 0xC640E0ULL
+#define RVA_lua_pushinteger 0xC64240ULL
+#define RVA_lua_pushnumber 0xC64380ULL
+#define RVA_lua_pushstring 0xC643C0ULL
+#define RVA_lua_pushcclosure 0xC64130ULL
+#define RVA_lua_createtable 0xC634F0ULL
+#define RVA_lua_setfield 0xC648B0ULL
+#define RVA_luaL_error 0xC65F30ULL

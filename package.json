@@ -1,0 +1,15 @@
+{
+  "name": "the-second-shadow",
+  "version": "0.7.0-alpha",
+  "private": true,
+  "scripts": {
+    "test": "node tests/run.cjs",
+    "test:native": "node tests/native_aspect.cjs"
+  },
+  "devDependencies": {
+    "fengari": "0.1.4"
+  },
+  "author": "TheDalex",
+  "license": "MIT",
+  "description": "Experimental local co-op mod for the original Steam release of Little Nightmares II."
+}
