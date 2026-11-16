@@ -1,6 +1,6 @@
 # The Second Shadow · v0.7.0 Alpha
 
-**The Second Shadow** añade cooperativo local a la edición original de Little Nightmares II en Steam (Helios, Unreal Engine 4.24) mediante UE4SS. El modo local empieza con dos Monos y ofrece la opción de que P2 juegue con la apariencia de Six.
+Aquí tienes las teclas y opciones que puedes usar en **The Second Shadow**. Al activar el cooperativo empiezas con dos Monos; si quieres, puedes elegir la apariencia de Six para P2 desde el menú.
 
 ## Empezar a jugar
 
@@ -75,7 +75,7 @@ P2 participa en la escena de Six bajo la mesa y en el disparo al Cazador en la c
 En el pantano, ambos Monos deben agacharse bajo cobertura para evitar que el Cazador los detecte.
 
 
-## Configuración inicial de esta distribución
+## Los ajustes que dejé por defecto
 
 Cámara compartida estable, español, indicador visible y mando asignado a P1. El efecto de teletransporte está activado. Separación peligrosa, llenar pantalla, rescate aéreo, ayuda de salto y redirección de eventos de P2 están desactivados. P2 usa Mono y su sombrero sigue al de P1. Las teclas son las indicadas en esta guía.
 

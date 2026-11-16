@@ -1,6 +1,8 @@
 # Instalación — v0.7.0 Alpha
 
-Para Little Nightmares II **original de Steam, Windows x64**. Enhanced Edition y otras ediciones no están verificadas. Necesitas el juego instalado y Steam abierto. El ZIP del mod no incluye el juego ni UE4SS.
+Aquí te explico cómo instalar el mod en Little Nightmares II **original de Steam, para Windows x64**. Necesitas tener el juego instalado y Steam abierto. Descarga el mod y UE4SS por separado; el juego no viene incluido.
+
+Esta versión está preparada para la edición original. Todavía no he comprobado Enhanced Edition ni otras ediciones.
 
 ## 1. Descargar UE4SS compatible
 
@@ -8,9 +10,9 @@ Descarga [zDEV-UE4SS_v3.0.1-1161-g6eb3d9bc.zip](https://github.com/UE4SS-RE/RE-U
 
 SHA-256 del ZIP: `580a244bc30352cfd0d0019c4c63726c2bddd5bb04ef91f985df237aa81b06e9`.
 
-La descarga se verificó el 16 de noviembre de 2026. Su DLL coincide con la instalación de desarrollo. Aunque la etiqueta del ZIP indica 1161/g6eb3d9bc, el runtime anuncia v3.0.1 Beta #0 / Git SHA 5418fa4e; la compatibilidad se comprueba por huellas, no solo por ese texto.
+El enlace corresponde a la versión con la que preparé el mod. Si quieres comprobar la descarga, compara su SHA-256 con el valor de arriba; el instalador también lo revisa automáticamente. El registro de UE4SS puede mostrar v3.0.1 Beta #0 / Git SHA 5418fa4e aunque el ZIP se llame 1161/g6eb3d9bc. Esa diferencia de nombre es normal en este paquete.
 
-## 2. Instalar en una copia sin mods
+## 2. Instalar si todavía no tienes mods
 
 1. Cierra Little Nightmares II.
 2. Extrae el ZIP de The Second Shadow en una carpeta aparte. Conserva juntos Instalar.ps1, configuracion, licenses y Helios.
@@ -20,15 +22,15 @@ La descarga se verificó el 16 de noviembre de 2026. Su DLL coincide con la inst
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Instalar.ps1 -GameDirectory "D:\Juegos\Little Nightmares II" -RuntimeZip "D:\Descargas\zDEV-UE4SS_v3.0.1-1161-g6eb3d9bc.zip"
 ```
 
-El instalador comprueba el ejecutable y el ZIP antes de copiar. Rechaza instalaciones con UE4SS, un cargador o una carpeta Mods previa: no actualiza ni reemplaza configuraciones existentes. Extrae el runtime y los helpers compartidos, instala LN2LocalCoop y activa únicamente ese mod.
+El instalador comprueba la versión del juego y el ZIP de UE4SS antes de copiar los archivos. Si detecta UE4SS, un cargador o una carpeta Mods anterior, se detiene para evitar reemplazar tu instalación. En ese caso, consulta el apartado de instalaciones existentes más abajo.
 
-El instalador crea preferences.ini a partir de configuracion/preferences-default.ini, con los valores de lanzamiento elegidos por TheDalex. Los eventos de P2, el rescate aéreo y la ayuda de salto empiezan desactivados. No se incluyen partidas. La configuración base desactiva la recarga en caliente y las cachés de UE4SS utilizadas en la configuración compatible; mantiene la consola gráfica oculta. Solo aplica la plantilla de valores predeterminados publicada con el mod.
+Dejé los eventos de P2, el rescate aéreo y la ayuda de salto desactivados al empezar. Puedes activarlos desde F6 si quieres probarlos. Tus cambios se guardan en preferences.ini. El paquete no incluye partidas guardadas.
 
 ## 3. Empezar
 
 Abre la edición original. **F7** invita o retira a P2; **F6** abre el menú. Para la introducción conjunta, activa P2 antes de comenzar una partida nueva. Consulta CONTROLES.md en el ZIP o la guía de controles del repositorio.
 
-El usuario confirmó teclado y mando, persistencia de ajustes y el capítulo uno hasta la muerte del Cazador. El paquete incluye además el parche nativo 21 posterior a ese recorrido. La campaña completa no está validada.
+Probé teclado y mando, que los ajustes se conserven al reiniciar y el capítulo uno hasta la muerte del Cazador. Después añadí el parche de recuperación del teclado de P1. Todavía no he repetido el recorrido con ese ZIP final ni comprobado toda la campaña.
 
 ## Instalaciones existentes y actualizaciones
 
@@ -38,7 +40,7 @@ La configuración de referencia se encuentra en configuracion/UE4SS-settings.ini
 
 ## Diagnóstico
 
-Revisa Helios/Binaries/Win64/ue4ss/UE4SS.log buscando LN2LocalCoop y Adaptador nativo cargado. Al reportar un fallo, indica capítulo, checkpoint, controles, cámara y pasos para reproducirlo. Elimina rutas personales del registro antes de compartirlo.
+Revisa Helios/Binaries/Win64/ue4ss/UE4SS.log buscando LN2LocalCoop y Adaptador nativo cargado. Si me reportas un fallo, dime el capítulo, checkpoint, controles y cámara que usabas, junto con los pasos para repetirlo. Elimina rutas personales del registro antes de compartirlo.
 
 ## Desinstalar
 

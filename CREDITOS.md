@@ -2,11 +2,13 @@
 
 ## The Second Shadow
 
-**TheDalex** — autor y responsable del proyecto, adaptación del cooperativo a Little Nightmares II y pruebas en el juego.
+Soy **TheDalex**, autor de The Second Shadow. Este es mi proyecto para adaptar el cooperativo local a Little Nightmares II.
 
 ## Base de pantalla dividida
 
-Gracias a los autores de **SplitScreenMod**, distribuido con **UE4SS**, por la base de pantalla dividida utilizada al iniciar este proyecto. The Second Shadow desarrolla su propia adaptación para Little Nightmares II; el mod independiente SplitScreenMod no se incluye en el paquete y debe permanecer desactivado.
+Quiero agradecer a los autores de **SplitScreenMod**, distribuido con **UE4SS**, por la base de pantalla dividida con la que empecé este proyecto. A partir de ella trabajé en la adaptación para Little Nightmares II.
+
+Si ya tienes SplitScreenMod instalado, déjalo desactivado cuando uses The Second Shadow: el mod gestiona su propia pantalla dividida.
 
 - [Código original de SplitScreenMod](https://github.com/UE4SS-RE/RE-UE4SS/blob/7cb23a0d07c96015066d3c4334c623195bde8b2a/assets/Mods/SplitScreenMod/Scripts/main.lua).
 - [Historial de contribuciones al archivo](https://github.com/UE4SS-RE/RE-UE4SS/commits/main/assets/Mods/SplitScreenMod/Scripts/main.lua).
@@ -26,4 +28,4 @@ The Second Shadow es un proyecto de fans no oficial, sin afiliación ni respaldo
 
 ## Alcance de la licencia
 
-El código propio y la documentación de The Second Shadow se publican bajo [MIT](LICENSE), copyright 2026 TheDalex. Los componentes de terceros conservan sus propios avisos y licencias. Esta licencia no concede derechos sobre Little Nightmares II, sus recursos ni sus marcas.
+Publico el código propio y la documentación de The Second Shadow bajo [MIT](LICENSE), copyright 2026 TheDalex. Los componentes de terceros conservan sus propios avisos y licencias. Esta licencia no concede derechos sobre Little Nightmares II, sus recursos ni sus marcas.

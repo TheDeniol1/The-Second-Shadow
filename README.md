@@ -2,13 +2,13 @@
 
 **Dos jugadores. Una misma pesadilla.**
 
-Mod de cooperativo local para **Little Nightmares II**, creado por **TheDalex**.
+Soy **TheDalex** y este es **The Second Shadow**, mi mod de cooperativo local para **Little Nightmares II**.
 
-The Second Shadow permite que un segundo jugador acompañe a Mono en el mismo PC. Puedes compartir cámara o dividir la pantalla, jugar con dos Monos y elegir la apariencia de Six para P2.
+Con este mod puedes jugar con otra persona en el mismo PC y acompañar a Mono como un segundo jugador. Puedes compartir cámara o dividir la pantalla, jugar con dos Monos y elegir la apariencia de Six para P2.
 
 **v0.7.0 Alpha · Windows x64 · Edición original de Steam · MIT**
 
-> Versión alpha. La campaña completa aún no está validada. La descarga compatible de UE4SS está verificada. Se confirmó el recorrido del capítulo uno hasta la muerte del Cazador, teclado y mando, y persistencia de ajustes. El parche nativo 21 se incorporó después de ese recorrido.
+> Esta es una alpha. Probé el capítulo uno hasta la muerte del Cazador, el uso de teclado y mando y que los ajustes se guarden al reiniciar. Todavía me falta probar el resto de la campaña. Antes de publicar añadí un parche para recuperar el teclado de P1 tras cargar o reaparecer; el ZIP con ese parche pasó las pruebas automatizadas, pero aún no he repetido el recorrido con él.
 
 ## Qué incluye
 
@@ -23,7 +23,7 @@ The Second Shadow permite que un segundo jugador acompañe a Mono en el mismo PC
 
 Necesitas la **edición original de Little Nightmares II en Steam** y la compilación compatible de **UE4SS**. El juego y UE4SS se obtienen por separado. Esta versión no ofrece juego en línea ni dos mandos simultáneos; otras ediciones del juego no están verificadas.
 
-El capítulo uno se ha probado hasta la muerte del Cazador. Eso no garantiza que todos los capítulos, puzles o cinemáticas funcionen en cooperativo. Consulta las [limitaciones de esta alpha](docs/LIMITACIONES.md).
+Antes de empezar, revisa las [limitaciones de esta alpha](docs/LIMITACIONES.md). Puedes encontrar fallos en capítulos, puzles o cinemáticas que todavía no he probado.
 
 ## Descargar
 
@@ -39,9 +39,9 @@ Encontrarás todas las teclas, opciones y ayudas en la [guía de controles](docs
 
 ## Reportar un problema
 
-Indica el capítulo o checkpoint, qué hacía cada jugador, el tipo de cámara y los controles utilizados. Añade los pasos para repetir el fallo y, si hace falta, el fragmento relevante de UE4SS.log con las rutas personales eliminadas.
+Si encuentras un fallo, [abre un issue](https://github.com/TheDeniol1/The-Second-Shadow/issues) y cuéntame en qué capítulo o checkpoint ocurrió, qué hacía cada jugador y qué cámara y controles usabas. Si puedes explicar cómo repetirlo, me ayudas a localizarlo. También puedes adjuntar el fragmento relevante de UE4SS.log, quitando antes las rutas personales.
 
-## Desarrollo
+## Si quieres revisar o modificar el código
 
 Con Node.js y npm instalados, ejecuta desde la raíz:
 
@@ -50,12 +50,12 @@ npm install --ignore-scripts
 npm test
 ```
 
-La suite usa Fengari 0.1.4 para comprobar sintaxis y regresiones simuladas. La instalación de dependencias desde cero sigue pendiente de comprobación; las pruebas de esta preparación usaron Fengari local. Consulta también la [compilación del adaptador nativo](tools/native-build/README.md).
+Para comprobar la sintaxis Lua y las regresiones simuladas uso Fengari 0.1.4. Las pruebas pasaron con la instalación local de desarrollo; todavía queda comprobar la instalación de esas dependencias desde cero. Si quieres compilar la DLL, tienes los pasos en la [guía del adaptador nativo](tools/native-build/README.md).
 
 ## Créditos y licencia
 
 **TheDalex** — autor de The Second Shadow.
 
-Gracias a los autores de **SplitScreenMod** y al equipo de **UE4SS** por la base utilizada para iniciar el trabajo de pantalla dividida. [Créditos completos y avisos de terceros](CREDITOS.md).
+Gracias a los autores de **SplitScreenMod** y al equipo de **UE4SS** por la base con la que empecé a trabajar en la pantalla dividida. [Créditos completos y avisos de terceros](CREDITOS.md).
 
 Código propio y documentación bajo [MIT](LICENSE). Little Nightmares II y sus recursos pertenecen a sus respectivos titulares. Este es un mod de fans no oficial, sin afiliación con Tarsier Studios ni Bandai Namco Entertainment.

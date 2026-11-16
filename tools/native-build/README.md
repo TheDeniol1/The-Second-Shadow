@@ -1,6 +1,6 @@
 # Compilar el adaptador
 
-Código C para Windows x64 y Lua de UE4SS. Se incluyen lua-rvas.h y runtime-identity.h correspondientes a la compilación compatible, sin DLL ni PDB de UE4SS.
+Si quieres compilar el adaptador nativo del mod, aquí tienes los pasos. Está escrito en C para Windows x64 y usa el Lua de UE4SS. Incluí lua-rvas.h y runtime-identity.h para la versión compatible; la DLL y el PDB de UE4SS se obtienen por separado.
 
 Instala Tiny C 0.9.27 para Windows x64 y agrega tcc al PATH. Desde la raíz:
 
