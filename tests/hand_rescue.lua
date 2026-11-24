@@ -210,34 +210,13 @@ now=7.4;assert(n:update(false)and climbRequests==2)
 assert(p.mAnimationControlComponent.mCurrentAnimStateAsset==pull,'start the pull once on native climb acceptance')
 n.base.ledge=function()return nil end;q.at=h;q.CharacterMovement.MovementMode=1
 now=7.5;assert(not n:update(false)and nativeFinished==1 and n.base.control.active==nil)
--- A crouched helper arms the pose; a fresh grab from the other Mono launches.
-local base={X=0,Y=0,Z=100};local partner={X=65,Y=0,Z=100}
-p.at=base;q.at=partner;p.CharacterMovement.MovementMode=1;q.CharacterMovement.MovementMode=1
-local grabs={[p]=false,[q]=true}
-n.base.held=function(_,pawn)return grabs[pawn]end
+-- Crouching while offering a rescue never arms the independent boost.
+p.CharacterMovement.MovementMode=1;q.CharacterMovement.MovementMode=1
+p.anim.CrouchAmount=1;c.state.jumpAssist=true
 held[1]=false;held[2]=false;now=8;n:update(false)
-c.state.jumpAssist=true;p.anim.CrouchAmount=1
-held[1]=true;now=8.1;assert(n:update(false)and n.control.active.phase=='boostReady' and not q.launches)
-assert(n.control.active.hAsset==hoist,'the jump boost uses the Six hoist pose')
-p.CharacterMovement.MovementMode=6
-held[1]=false;now=8.2;assert(n:update(false)and not q.launches,'a locally stationary override can use a different movement mode')
-p.CharacterMovement.MovementMode=1
-grabs[q]=false;now=8.25;assert(n:update(false))
-grabs[q]=true;blocked=true;now=8.3;assert(n:update(false)and not q.launches)
-grabs[q]=false;blocked=false;now=8.35;assert(n:update(false))
-grabs[q]=true;now=8.4;assert(not n:update(false)and q.launches==1 and p.Controller.tick)
-now=8.45;assert(not n:update(false)and q.launches==1)
-p.anim.CrouchAmount=0;q.anim.CrouchAmount=1;q.at=base;p.at=partner
-grabs[q]=false;held[2]=true;now=8.5;assert(n:update(false)and p.Controller.tick)
-held[2]=false;now=8.55;assert(n:update(false))
-grabs[q]=true;now=8.6;assert(not n:update(false)and not p.launches,'helper grab cancels without launching')
-grabs[q]=false;now=8.65;n:update(false)
-held[2]=true;now=8.7;assert(n:update(false))
-grabs[p]=true;now=8.75;assert(not n:update(false)and p.launches==1,'either Mono can receive the jump')
-held[2]=false;grabs[p]=false;now=8.8;n:update(false)
-c.state.jumpAssist=false;held[2]=true;now=8.9
-assert(n:update(false)and n.control.active.phase=='ready' and p.launches==1,'disabling jump assist keeps the hand offer')
-held[2]=false;now=8.95;n:update(false)
+held[1]=true;now=8.1;n:update(false)
+assert(n.control.active and n.control.active.phase=='ready' and not q.launches,'rescue stays a hand offer with boost enabled')
+held[1]=false;now=8.2;n:update(false)
 StaticFindObject=oldFind
 FName=oldFName
 print('PASS: hand offer, reach, occlusion, both roles, single paired pull, release, ownership and rollback.')

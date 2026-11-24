@@ -27,8 +27,13 @@ function D:ready(p1)
  assert(not self.api.same(pawn,p1.Pawn),'El motor reutilizo al primer Mono')
  assert(self.api.isMono(pawn),'El personaje creado no es Mono')
  if not self.api.same(self.pawn,pawn) then
+  local placed
+  if self.api.prepare then
+   placed=self.api.prepare(self.pc,pawn,p1)
+   if placed==false then return false end
+  end
   if self.api.configure and self.api.configure(self.pc,pawn,p1)==false then return false end
-  self.api.rescue(pawn,p1)
+  if not placed then self.api.rescue(pawn,p1)end
   self.pawn=pawn; self.originalPawn=p1.Pawn; self.restartAt=nil; self.parked=false; self.parkedPawn=nil
  end
  return true

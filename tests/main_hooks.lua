@@ -5,6 +5,7 @@ local removals=0
 local loop,view,saved;local clock=1;local pressed={}
 local paused,mouseChoice=false,nil
 local gameState=4
+local sixFinale=false
 local function obj(address)
  return {IsValid=function()return true end,HasAnyInternalFlags=function()return false end,
  GetAddress=function()return address end}
@@ -21,7 +22,8 @@ local stubs={UEHelpers={GetGameViewportClient=function()return viewport end,
   IsGamePaused=function()return paused end,SetGamePaused=function(_,_,value)paused=value;return true end}end},
  mono_driver={new=function()return driver end},
  native_input={new=function()return {foreground=function()return true end}end},
- spawn_native={new=function(context)return {playingGame=function()return gameState==5 end,gameState=function()return gameState end,
+ spawn_native={new=function(context)return {playingGame=function()return gameState==5 end,gameState=function()return gameState end,sixFinale=function()return sixFinale end,
+ installCheckpointWatch=function()end,
  api=function()return {cancel=function()end,cleanup=function()driver:remove()end,
  live=context.live,same=context.same}end}end},
  coop_ui={new=function()return {sync=function(_,_,state)view=state end,menuPointer=function()
@@ -188,7 +190,7 @@ assert(not view.jumpAssist and view.airRescue,'jump assist preference survives r
 clock=14;keys.F6();keys.ONE();loop()
 assert(view.menuPage=='play' and not view.enabled,'F6 1 opens the mode selector without starting local coop')
 keys.TWO();loop()
-assert(view.menuPage=='play' and not view.enabled,'online is inert')
+assert(view.menuPage=='play' and not view.enabled and view.online==nil,'online stays disabled (in development) in v0.8.0 Alpha')
 clock=15;keys.ONE()
 assert(view.enabled,'Local enables the existing coop')
 clock=16;keys.ONE()
@@ -250,12 +252,24 @@ assert(view.playAsSix,'Six appearance survives a fresh mod instance')
 clock=8;keys.F6();keys.FOUR();keys.FIVE();loop()
 assert(not view.playAsSix and saved:find('appearance.six=0',1,true)
  and saved:find('appearance.hat=bare',1,true),'returning to Mono keeps the saved hat')
+clock=9;keys.F6();keys.F7();loop()
+assert(view.enabled,'co-op is armed before the ending')
+sixFinale=true;loop()
+assert(not view.enabled and view.status=='Dark Six ha desaparecido','the ending retires P2 before the death and spawn checks')
+clock=10;keys.F7();loop()
+assert(not view.enabled and view.status=='Dark Six ha desaparecido','F7 cannot recreate P2 in the solo finale')
+sixFinale=false;clock=11;keys.F6();keys.SEVEN();mouseChoice='Three';loop()
+assert(view.menuPage=='gamepad' and view.gamepad.owner==3 and saved:find('pad.owner=3',1,true),
+ 'the mouse selects and saves two controllers in the production menu')
+assert(loadfile('mods/LN2LocalCoop/scripts/main.lua','t',env))()
+loop()
+assert(view.gamepad.owner==3,'two-controller assignment survives a fresh instance')
 for _,line in ipairs(logs)do assert(not line:find('Error:',1,true),table.concat(logs,'\n'))end
 print('PASS: production entry point forwards native hook arguments and deduplicates reload notifications.')
 print('PASS: production TP menu capture, preference writer and restoration in a fresh mod instance.')
 print('PASS: production camera menu selection, persistence and split readiness.')
 print('PASS: production Extras menu navigation, independent toggles and preference restoration.')
-print('PASS: mode selector, local toggle, and inert online entry.')
+print('PASS: mode selector, local toggle, and disabled online option.')
 print('PASS: F6 pause ownership and mouse navigation.')
 print('PASS: F6 accepts presses after a world change and clock reset.')
 print('PASS: Extras language selection by keyboard and mouse, including persistence.')

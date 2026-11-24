@@ -22,21 +22,35 @@ local TPNative=require('tp_native')
 local Gamepad=require('coop_gamepad')
 local Hats=require('coop_hats')
 local SixAppearance=require('six_appearance')
+local SixControl=require('six_control')
+local Hoist=require('six_hoist')
 local Camera=require('coop_camera')
 local CinematicTrace=require('cinematic_trace')
 local HunterTrace=require('hunter_trace')
 local Cinematics=require('coop_cinematics')
 local CinematicNative=require('cinematic_native')
-local LedgeRescue=require('hand_rescue_native')
+local TVScene=require('cinematic_tv')
+local LedgeRescue=require('hand_offer')
 local RescueInput=require('rescue_input')
 local Events=require('coop_events')
+local SubjectTrace=require('subject_trace')
+local StoryItems=require('coop_story_items')
+local BullyHead=require('coop_bully_head')
+local BullyRules=require('coop_bully_rules')
+local MusicBox=require('music_box_transition')
+local TowerAxe=require('tower_axe_transition')
+local FinalBridge=require('final_bridge')
+local Finale=require('finale_scene')
+local FinaleNative=require('finale_native')
 local ledgeRescue,primaryRecovery
 local state={enabled=false,menu=false,menuPage='home',preset=1,cameraMode=1,split=false,showStatus=true,status='Desactivado',appearance={},tp={effects=true},eventRedirect=false}
 local function log(s) print('[LN2LocalCoop] '..s..'\n') end
 local function live(o) return o~=nil and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
 local function same(a,b) return live(a) and live(b) and a:GetAddress()==b:GetAddress() end
 local function world(a,b) return live(a) and live(b) and same(a:GetWorld(),b:GetWorld()) end
-local call=Call.new(live,same,log)
+local call=Call.new(live,same,log,function(pawn)
+ return ledgeRescue and ledgeRescue.base:ledge(pawn)~=nil
+end)
 local previousSplitLayout
 local appliedSplitLayout
 local previousOcclusionQueries
@@ -149,6 +163,15 @@ local function p2Input(pc)
   return pc and down(pc,key)
  end)
 end
+-- Modo online (coop_online.lua): en el anfitrion, los controles de P2 llegan
+-- del invitado por la red de Steam; en el invitado, se envian los suyos.
+local Online=require('coop_online')
+local localP2Input=p2Input
+local online=Online.new({root=root,log=log,version=Menu.version,
+ sample=function()return localP2Input(p1())end,pad=native.api and native.api.gamepad,
+ foreground=function()return native:foreground()end,language=function()return state.language end})
+state.online=Online.enabled and online or nil
+p2Input=function(pc)return online:remoteInput() or localP2Input(pc)end
 state.tp.effects=savedPreferences:match('tp%.effects=(%d)')~='0'
 for key,value in ('\n'..savedPreferences):gmatch('\nappearance%.([%w_]+)=([^\r\n]*)')do
  state.appearance[key]=value
@@ -156,10 +179,34 @@ end
 local hats=Hats.new(live,same,state.appearance,log)
 state.hats=hats
 state.playAsSix=state.appearance.six=='1'
+-- Pestaña Logros en el menú del propio juego (Steam solo lectura + logros del mod).
+local okAchievements,errAchievements=pcall(function()
+ require('game_menu').install({state=state,log=log,live=live,root=root,p1=p1,focused=function()return native:foreground()end,
+  keyDown=function(key)local code=RescueInput.code(key)return code and native.api and native.api.key_down and native.api.key_down(code)or false end,
+  playing=function()local pc=p1();local pawn=pc and pc.Pawn
+   return live(pawn) and pawn:GetFullName():find('BP_PlayerPawn_C',1,true)~=nil and not UE.GetGameplayStatics():IsGamePaused(pc)end})
+end)
+if not okAchievements then log('Logros no disponibles: '..tostring(errAchievements)) end
 local sixAppearance=SixAppearance.new(live,same,log)
+local hoist=Hoist.new({live=live,same=same,log=log,math=UE.GetKismetMathLibrary})
+local function actionKey(name)
+ local lib=StaticFindObject('/Script/Helios.Default__ChalkboardBlueprintsLibrary')
+ return lib:MakeChalkboardSectionKeyFromName(FName('/FlowControl/'..name),{mType={PinCategory=FName('bool')}})
+end
+local sixControl=SixControl.new({live=live,same=same,world=world,key=actionKey,log=log,
+ storyPawn=function(pawn)return sixAppearance:storyPawn(pawn)end,
+ crouch=function(animator,held)native:sixCrouch(animator,held)end,
+ ownsAssist=function(pawn)
+  return hoist:ownsPawn(pawn) or (ledgeRescue and ledgeRescue:ownsAnimation(pawn))
+ end,
+ park=function()sixAppearance:restore()end})
 local function syncAppearance(second,pawn,first)
  if state.playAsSix then
-  local applied,reason=sixAppearance:sync(second,pawn,first)
+  local applied,reason
+  local story=sixControl:actor()
+  if story and world(pawn,story) then
+   sixAppearance:observeOutfit(pawn,story)
+  elseif not story then applied,reason=sixAppearance:sync(second,pawn,first,true) end
   state.sixAppearanceFailed=not applied and reason~=nil
   local ok,err=pcall(hats.hideForSix,hats,second,pawn,first)
   if not ok and err~=sixAppearance.hatError then log('Sombrero en modo Six: '..tostring(err)) end
@@ -189,17 +236,19 @@ local function save()
   f:write('\n');f:close()
  end
 end
-local function rescue(pawn,pc)
- local at=pc.Pawn:K2_GetActorLocation()
- local right=UE.GetKismetMathLibrary():GetRightVector(pc.PlayerCameraManager:GetCameraRotation())
- at.X,at.Y=at.X+right.X*100,at.Y+right.Y*100
- pawn:K2_SetActorLocation(at,true,{},true)
+local function restartLocalPawn(pc,pawn,first,at)
+ if not(live(pc.Player)and pc.Player.ControllerId==1 and same(pc.Pawn,pawn)
+  and same(pawn.Controller,pc)and not same(pawn,first.Pawn))then return false end
+ local mode=first:GetWorld().AuthorityGameMode
+ if not live(mode)then return false end
+ local transform=UE.GetKismetMathLibrary():MakeTransform(at,first.Pawn:K2_GetActorRotation(),{X=1,Y=1,Z=1})
+ pc:UnPossess()
+ pawn:K2_DestroyActor()
+ mode:RestartPlayerAtTransform(pc,transform)
+ return true
 end
 local nativeActions=Actions.new({
- key=function(name)
-  local lib=StaticFindObject('/Script/Helios.Default__ChalkboardBlueprintsLibrary')
-  return lib:MakeChalkboardSectionKeyFromName(FName('/FlowControl/'..name),{mType={PinCategory=FName('bool')}})
- end,
+ key=actionKey,
  start=function(a,key) a:BlueprintStartAction(key) end,
  hold=function(a,key) a:BlueprintHoldAction(key) end,
  stop=function(a,key) a:BlueprintStopAction(key) end,
@@ -208,8 +257,13 @@ local nativeActions=Actions.new({
  use=function(a,held) native:use(held) end,
  gadget=function(held) native:gadget(held) end,
 })
-local cinematics
+local cinematics,finalBridge,spawnNative,tpNative
 local driver=Driver.new({live=live,same=same,sameWorld=world,
+ prepare=function(pc,pawn,first)
+  local placed=finalBridge:prepare(pc,pawn,first)
+  if placed~=nil then return placed end
+  return spawnNative:prepareJoin(pc,pawn,first)
+ end,
  existing=function(pc)
   local second=UE.GetGameplayStatics():GetPlayerController(pc,1)
   return live(second) and second or nil
@@ -247,8 +301,10 @@ local driver=Driver.new({live=live,same=same,sameWorld=world,
    syncAppearance(second,pawn,first)
  end,
  park=function(pc)
-  call:release()
+  hoist:reset()
   if ledgeRescue then ledgeRescue:reset()end
+  sixControl:restore()
+  call:release()
   if cinematics then cinematics:reset()end
   native:vent(false)
   native:cage()
@@ -266,7 +322,6 @@ local driver=Driver.new({live=live,same=same,sameWorld=world,
   end
  end,
  isMono=function(pawn) return pawn:GetFullName():find('BP_PlayerPawn_C',1,true)~=nil end,
- rescue=rescue,
  stop=function(pawn)
   native:vent(false)
   native.direction={X=0,Y=0,Z=0}
@@ -292,14 +347,40 @@ local driver=Driver.new({live=live,same=same,sameWorld=world,
   native:vent(input.grab and native:foreground())
  end,
 })
-local events=Events.new({live=live,same=same,p1=p1,driver=driver,native=native,log=log})
+local events=Events.new({live=live,same=same,world=world,p1=p1,driver=driver,native=native,log=log,
+ input=p2Input,primaryGrab=function(pawn)return ledgeRescue.base:held(pawn)end})
+local subjects=SubjectTrace.new({native=native,log=log,
+ name=function(index)
+  local ok,text=pcall(function()return FName(index):ToString()end)
+  -- UE4SS builds these names with Number 1, which prints a spurious _0.
+  if ok and type(text)=='string' and text~='None' then return (text:gsub('_0$','')) end
+ end,
+ distances=function(path)
+  local pc=p1()
+  if not (pc and live(pc.Pawn) and live(driver.pawn)) then return end
+  local ok,first,second=pcall(function()
+   local actor=StaticFindObject(path)
+   if not world(actor,pc.Pawn) then return end
+   local at,a,b=actor:K2_GetActorLocation(),pc.Pawn:K2_GetActorLocation(),driver.pawn:K2_GetActorLocation()
+   return math.sqrt((at.X-a.X)^2+(at.Y-a.Y)^2+(at.Z-a.Z)^2),math.sqrt((at.X-b.X)^2+(at.Y-b.Y)^2+(at.Z-b.Z)^2)
+  end)
+  if ok then return first,second end
+ end})
 local previous
 local function status(s) state.status=s; if previous~=s then previous=s; log(s) end end
 local separationFX=SeparationFX.new(live,same,log,native.api)
 local function clearSeparation()
  separation:reset();separationFX:clear()
 end
-local spawnNative=SpawnNative.new({live=live,same=same,world=world,driver=driver,p1=p1,log=log,session=state})
+spawnNative=SpawnNative.new({live=live,same=same,world=world,driver=driver,p1=p1,log=log,session=state,
+ clock=function(pc)return UE.GetGameplayStatics():GetTimeSeconds(pc)end,
+ landing=function(...)return finalBridge:destination(...)end,clear=function(...)return tpNative:clear(...)end,
+ restartLocal=restartLocalPawn,
+ storySix=function(pawn)
+  if not state.playAsSix then return false end
+  local story=sixAppearance:storyPawn(pawn)
+  return live(story) and not story.bHidden and story:IsAlive()
+ end})
 local spawn=Spawn.new(spawnNative:api())
 local cinematicTrace=CinematicTrace.new({live=live,same=same,world=world,p1=p1,
  driver=driver,state=state,log=log,phase=function()return spawn.phase end})
@@ -321,18 +402,101 @@ local death=Death.new({live=live,same=same,sameWorld=world,
   lib:RespawnPlayer(pc)
   log('Reinicio compartido solicitado para '..who)
  end})
-local tpNative=TPNative.new({UE=UE,live=live,same=same,world=world,p1=p1,driver=driver,
- state=state,spawn=spawn,death=death,log=log,input=function() return p2Input(p1()) end})
+tpNative=TPNative.new({UE=UE,live=live,same=same,world=world,p1=p1,driver=driver,
+ state=state,spawn=spawn,death=death,log=log,input=function() return p2Input(p1()) end,
+ playpal=function()return sixControl:actor(),sixControl.ai~=nil end,
+ stopPlaypal=function()sixControl:stop()end})
+finalBridge=FinalBridge.new({live=live,same=same,log=log,
+ playAsSix=function()return state.playAsSix end,
+ clock=function(pc)return UE.GetGameplayStatics():GetTimeSeconds(pc)end,
+ clear=function(...)return tpNative:clear(...)end,
+ restartLocal=restartLocalPawn})
+ local function moveToArrival(pawn,at)
+  if same(pawn,driver.pawn) then driver:stop() end
+  pawn.CharacterMovement:StopMovementImmediately()
+  return pawn:K2_SetActorLocation(at,false,{},true)~=false
+ end
+ local musicBox=MusicBox.new({live=live,same=same,log=log,
+ destination=function(first,second,at)return finalBridge:destination(first,second,at)end,
+ canMove=function(pawn)return tpNative:blocked(pawn)==nil end,
+  move=moveToArrival})
+ local function heldAtTowerDoor(pawn)
+  return events:heldActor(pawn,pawn:GetPlayerPickupInterface())
+ end
+ local towerAxe=TowerAxe.new({same=same,log=log,held=heldAtTowerDoor,
+  grounded=function(pawn)return live(pawn.CharacterMovement) and pawn.CharacterMovement.MovementMode==1 end,
+  canMove=function(pawn)
+   if not TowerAxe.isAxe(heldAtTowerDoor(pawn)) then return tpNative:blocked(pawn)==nil end
+   local control=pawn.mAnimationControlComponent
+   local anim=live(pawn.Mesh) and pawn.Mesh:GetAnimInstance()
+   local grab=live(anim) and anim.mCurrentlyActiveGrabInterface or nil
+   return live(pawn.CharacterMovement) and pawn.CharacterMovement.MovementMode==1
+    and live(control) and not control:IsPlayingOverrideAnimation()
+    and live(anim) and (not live(grab) or same(grab,pawn:GetPlayerPickupInterface()))
+  end,
+  destination=function(anchor,follower,at)
+   local start={X=at.X,Y=at.Y,Z=at.Z+4}
+   return finalBridge:destination(anchor,follower,at,function(candidate)
+    return tpNative:clear(follower,anchor,start,candidate)
+   end,{{0,-100},{0,100},{-100,0},{100,0},{-72,-72},{72,-72},{-72,72},{72,72}})
+  end,
+  move=moveToArrival})
 tpControls=TPBindings.new(controls,savedPreferences,function(key)return tpNative:primaryKeys()[key]end)
 state.tp.controls=tpControls
 local teleport=Teleport.new(tpNative:api())
 local cinematicNative=CinematicNative.new({UE=UE,live=live,same=same,world=world,
  p1=p1,driver=driver,state=state,spawn=spawn,death=death,log=log,
+ landing=function(first,second,at,accepts)return finalBridge:destination(first,second,at,accepts)end,
+ sequence=function(name,pawn)return cinematicTrace:sequence(name,pawn)end,
  clear=function(...)return tpNative:clear(...)end,active=function()return cinematics and cinematics.active end})
+local storyItems=StoryItems.new({live=live,same=same,world=world,native=native,log=log,gameplay=UE.GetGameplayStatics,
+ canEquip=function(pawn)return cinematicNative:available(pawn)end})
+local bullyHead=BullyHead.new({live=live,same=same,world=world,native=native,log=log,
+ input=function()return p2Input(p1())end,six=function()return state.playAsSix==true end,
+ hideMask=function()
+  local ok,err=pcall(hats.hideForSix,hats,driver.pc,driver.pawn,p1())
+  if not ok then log('Cabeza de P2: mascara en modo Six: '..tostring(err)) end
+ end})
+local bullyRules=BullyRules.new({live=live,same=same,world=world,native=native,log=log})
 cinematics=Cinematics.new(cinematicNative:api())
 cinematicNative:install()
+local finaleNative=FinaleNative.new({UE=UE,p1=p1,live=live,same=same,world=world,driver=driver,log=log,
+ clear=function(p,from,to)return tpNative:clear(p,nil,from,to)end,
+ playPose=function(...)return cinematicNative:playLocalPose(...)end,
+ stopPose=function(pawn,clip)cinematicNative:stopLocalPose(pawn,clip,true)end})
+local finale=Finale.new(finaleNative:api())
+local television=TVScene.new({live=live,same=same,world=world,log=log,
+ enabled=function()return state.enabled end,
+ pair=function()
+  if spawn.phase~='active' or spawn.pending or death.pending or sixControl:actor() then return end
+  local first,second,pc=cinematicNative:pair()
+  if first and first:IsAlive() and second:IsAlive() then
+   return first,second,UE.GetGameplayStatics():GetTimeSeconds(pc)
+  end
+ end,
+ grounded=function(pawn)return live(pawn.CharacterMovement) and pawn.CharacterMovement.MovementMode==1 end,
+ canMove=function(pawn)
+  local pc=p1()
+  return (not pc or not same(pawn,pc.Pawn) or not pc:IsMoveInputIgnored()) and cinematicNative:available(pawn)
+ end,
+ owns=function(pawn,clip)return cinematicNative:owns(pawn,clip)end,
+ stop=function(pawn,clip)cinematicNative:stopLocalPose(pawn,clip,true)end,
+ play=function(...)return cinematicNative:playLocalPose(...)end,
+ landing=function(...)return finalBridge:destination(...)end,
+ move=function(pawn,at)
+  if same(pawn,driver.pawn) then driver:stop() end
+  pawn.CharacterMovement:StopMovementImmediately()
+  return pawn:K2_SetActorLocation(at,false,{},true)~=false
+ end})
 ledgeRescue=LedgeRescue.new({UE=UE,live=live,same=same,world=world,p1=p1,driver=driver,
  state=state,spawn=spawn,death=death,gamepad=gamepad,log=log,
+ playpal=function()return sixControl:actor(),sixControl.ai~=nil end,
+ ownsPrimary=function(pawn)return ledgeRescue:ownsAnimation(pawn)end,
+ cameraYaw=function(pawn)
+  local pc=p1()
+  local manager=state.split and not same(pawn,pc.Pawn) and driver.pc.PlayerCameraManager or pc.PlayerCameraManager
+  return manager:GetCameraRotation().Yaw
+ end,
  clock=function()local pc=p1();return pc and UE.GetGameplayStatics():GetRealTimeSeconds(pc)or os.clock()end,
  physicalKey=native.api and native.api.key_down,
  offerHeld=function(role)
@@ -341,19 +505,49 @@ ledgeRescue=LedgeRescue.new({UE=UE,live=live,same=same,world=world,p1=p1,driver=
   for _,value in pairs(controls.bindings)do if value==key then conflict=true end end
   for _,value in pairs(tpControls.bindings)do if value==key then conflict=true end end
   local keyboard=not conflict and native.api and native.api.key_down and native.api.key_down(role==1 and 112 or 113)
-  local pad=gamepad.owner==role and gamepad.sample
-  return keyboard==true or (pad and pad.assist==true)or false
+  local pad=gamepad:forRole(role)
+  return keyboard==true or (pad and pad.assist==true) or (role==2 and online:remoteAssist()) or false
  end,
  foreground=function()return native:foreground()end,input=function()return p2Input(p1())end})
-local function disable()
+local sixFinaleStatus='Dark Six ha desaparecido'
+local function disable(reason)
+ events:setEnabled(false)
+ pcall(subjects.setEnabled,subjects,false)
+ storyItems:reset()
+ bullyHead:reset()
+ bullyRules:reset()
+ musicBox:reset()
+  towerAxe:reset()
+ television:reset()
+ hoist:reset()
  ledgeRescue:reset()
- state.enabled=false; setSplit(p1(),false); clearSeparation();gamepad:restore(); death:reset();spawn:disable(); driver:stop(); driver:remove(); status('Desactivado')
+ sixControl:restore()
+ finalBridge:reset()
+ finale:reset()
+ state.enabled=false; setSplit(p1(),false); clearSeparation();gamepad:restore(); death:reset();spawn:disable(); driver:stop(); driver:remove(); status(reason or 'Desactivado')
+end
+local function retireDarkSix(pc,lastHit)
+ if lastHit then
+  local visual=sixAppearance:darkVisual(driver.pawn)
+  if pc and world(visual,pc.Pawn) then
+   local ok,effect=pcall(finaleNative.dissolveAt,finaleNative,visual)
+   if not ok then log('Dark Six: error al reproducir la desaparicion: '..tostring(effect))
+   elseif live(effect) then log('Dark Six: efecto de desaparicion tras el ultimo golpe') end
+  end
+ end
+ disable(sixFinaleStatus)
 end
 local function toggle()
+ local pc=p1()
+ local playing=spawnNative:playingGame(pc)
+ local soloFinale,lastHit=spawnNative:sixFinale(pc,playing)
+ if soloFinale then
+  if state.enabled then retireDarkSix(pc,lastHit) else status(sixFinaleStatus) end
+  return
+ end
  if state.enabled then disable() else
   state.enabled=true
-  local pc=p1()
-  local early=not spawnNative:playingGame(pc)or not(pc and live(pc.Pawn)and pc.Pawn:GetFullName():find('BP_PlayerPawn_C',1,true))
+  local early=not playing or not(pc and live(pc.Pawn)and pc.Pawn:GetFullName():find('BP_PlayerPawn_C',1,true))
   spawn:enable(early);status('Esperando una partida')
   if state.tp.effects then pcall(function()tpNative:prepareEffects()end)end
  end
@@ -366,14 +560,34 @@ local function safe(fn)
    clearSeparation()
    pcall(function() gamepad:restore() end)
    pcall(function() setSplit(p1(),false) end)
+   pcall(function() finale:reset() end)
+   events:setEnabled(false)
+   pcall(storyItems.reset,storyItems)
+   pcall(bullyHead.reset,bullyHead)
+   pcall(bullyRules.reset,bullyRules)
+   musicBox:reset()
+    towerAxe:reset()
+   pcall(television.reset,television)
+   hoist:reset()
+   pcall(ledgeRescue.reset,ledgeRescue)
+   pcall(function() sixControl:restore() end)
    state.enabled=false; pcall(function() spawn:disable();driver:stop(); driver:remove() end)
+   pcall(subjects.setEnabled,subjects,false)
    status('No se pudo activar el cooperativo'); log(tostring(err))
   end
  end
 end
 RegisterHook('/Script/Helios.SpawningSystemsLibrary:RespawnPlayer',safe(function(_,context)
  local pc=p1();local caller=context:get()
- if state.enabled and pc and (same(caller,pc)or world(caller,pc))then
+ if state.enabled and not finale.route and pc and (same(caller,pc)or world(caller,pc))then
+  events:setEnabled(false)
+  pcall(storyItems.reset,storyItems)
+  pcall(bullyHead.reset,bullyHead)
+  pcall(bullyRules.reset,bullyRules)
+  musicBox:reset()
+  towerAxe:reset()
+  television:reset()
+  sixAppearance:resetWardrobe()
   clearSeparation();spawn:invalidate(pc.Pawn)
  end
 end))
@@ -433,6 +647,9 @@ bind(Key.TWO,'Two',function()
  if homeMenu() then
   state.menuPage='camera'
   driver:stop()
+ elseif playMenu() and state.online then
+  state.menuPage='online'
+  driver:stop()
  elseif cameraMenu() then
   selectCamera(2)
  elseif extrasMenu() then
@@ -449,7 +666,8 @@ bind(Key.THREE,'Three',function()
   driver:stop()
  elseif cameraMenu() then selectCamera(3)
  elseif extrasMenu() then state.jumpAssist=not state.jumpAssist;save()
- elseif state.menu and state.menuPage=='teleport'and not tpControls.capture then state.tp.effects=not state.tp.effects;save()end
+ elseif state.menu and state.menuPage=='teleport'and not tpControls.capture then state.tp.effects=not state.tp.effects;save()
+ else assignGamepad(3) end
 end)
 bind(Key.SEVEN,'Seven',function()
  if homeMenu() then
@@ -534,13 +752,17 @@ local function inspect()
  cinematicTrace:mark()
  hunterTrace:mark()
  events:mark()
+ subjects:mark()
+ storyItems:mark()
+ bullyHead:mark()
  inputState()
  local pc=p1(); log(Menu.version..' | '..state.status..' | spawn='..spawn.phase)
  if camera.active then
   local name=live(camera.actor) and camera.actor:GetFullName() or 'sin seguimiento compartido'
   log(string.format('Camara cooperativa: %.1f%% | %s',camera.amount*100,name))
  end
- log('Mando: preferencia P'..gamepad.owner..' | XInput '..tostring(gamepad.slot)..' | desvio P2 '..tostring(gamepad.routed))
+ log('Mandos: modo='..gamepad.owner..' | canal P1='..tostring(gamepad.primarySlot)
+  ..' | canal P2='..tostring(gamepad.secondSlot)..' | desvio de Unreal='..tostring(gamepad.routed))
  log('Sombrero P2: preferencia '..hats:selected()..' | aplicado '..tostring(hats.applied))
  if state.playAsSix and live(driver.pawn) then
   local ok,err=pcall(function()
@@ -606,7 +828,7 @@ primaryRecovery=PrimaryRecovery.new({live=live,same=same,
  end,
  clock=function(pc)return UE.GetGameplayStatics():GetRealTimeSeconds(pc)end,
  intent=function(pc)
-  local pad=gamepad.owner==1 and not gamepad.routed and gamepad.foreground and gamepad.sample
+  local pad=gamepad.foreground and gamepad:forRole(1)
   if pad and (pad.x~=0 or pad.y~=0) then return true end
   for _,key in ipairs(movementKeys) do if menuDown(pc,key) then return true end end
  end,
@@ -623,19 +845,47 @@ primaryRecovery=PrimaryRecovery.new({live=live,same=same,
   if result==nil and refocus then log('Contexto nativo de P1 pendiente; se reintentará con movimiento') end
   return result~=nil
  end})
+local function confirmCheckpoint(first)
+ local spawning=spawn:confirmReload(first)
+ local restarting=death:confirmReload(first)
+ if spawning or restarting then log('Punto de control: el juego confirmo la reaparicion de P1') end
+end
 local requestCountdown=0
 LoopInGameThreadWithDelay(16,safe(function()
  local pc=p1()
  local now=pc and UE.GetGameplayStatics():GetRealTimeSeconds(pc)or os.clock()
  local fg=native:foreground()
+ online:update()
+ if state.enabled then spawnNative:installCheckpointWatch(now,confirmCheckpoint) end
  if PrimaryLink.ensure(pc,{live=live,same=same,isMono=function(pawn)
   return pawn:GetFullName():find('BP_PlayerPawn_C',1,true)~=nil
  end,stale=function(old,current)return not world(old,current)end}) then log('Referencia nativa del primer Mono recuperada') end
- local playable=pc and live(pc.Pawn) and pc.Pawn:GetFullName():find('BP_PlayerPawn_C',1,true)
+ local firstPath=pc and live(pc.Pawn) and pc.Pawn:GetFullName()
+ local playable=firstPath and firstPath:find('BP_PlayerPawn_C',1,true)
  local playing=spawnNative:playingGame(pc)
+ local soloFinale,lastHit=spawnNative:sixFinale(pc,playing)
+ if soloFinale and state.enabled then retireDarkSix(pc,lastHit) end
+ if finale.route and not playing and spawnNative:gameState(pc)==4 then finale:reset()end
+ local trackFinale=state.enabled and not state.playAsSix and (finale.route or (playable and live(driver.pawn)))
+ local ending=finale:update(playable and pc.Pawn or nil,driver.pawn,
+  trackFinale and playing and UE.GetGameplayStatics():GetTimeSeconds(pc)or 0,
+  trackFinale,playing,state.menu or (trackFinale and playing and UE.GetGameplayStatics():IsGamePaused(pc)))
+ if ending=='restart' then
+  local first=pc.Pawn
+  log('Puente final: termino el rescate de P2; reinicio de ambos')
+  death:begin(pc,first,first:IsAlive()and 'P2'or 'P1',true)
+  status('Volviendo al punto de control')
+  return
+ end
  if gamepad.read then
-  local inCoop=state.enabled and pc and (playable or spawn.pending or death.pending) and playing
+  local inCoop=state.enabled and ending~='hold' and pc and (playable or spawn.pending or death.pending) and playing
   local second=live(driver.player) and driver.player.ControllerId==1
+  if gamepad.owner==3 then
+   -- The native controller still receives viewport events. Use only the
+   -- mod's polling for P2 once its normal input tick has been disabled.
+   second=second and live(driver.pc) and same(driver.pc,native.pc)
+    and native:ready() and not driver.pc:IsActorTickEnabled()
+  end
   gamepad:update(now,inCoop,second,fg)
  end
  if pc then
@@ -657,6 +907,8 @@ LoopInGameThreadWithDelay(16,safe(function()
   if state.menu and (state.menuPage=='gamepad' or playMenu() or cameraMenu() or extrasMenu()) and fg and menuDown(pc,'BackSpace') then
    state.menuPage='home'
   end
+  if state.menu and state.menuPage=='online' and fg
+   and online:menuTick(function(key)return menuDown(pc,key)end)=='back' then state.menuPage='play' end
   if state.menu and state.menuPage=='hats' and fg then
    local result=hats:tick(function(key) return menuDown(pc,key) end)
    if result=='back' then state.menuPage='home'
@@ -670,6 +922,15 @@ LoopInGameThreadWithDelay(16,safe(function()
   requestCountdown=30
   restorePrimaryListener(pc,driver.pc)
   syncAppearance(driver.pc,driver.pawn,pc)
+  -- Playing as Six, dress P2 while it waits for clear ground too. The sync
+  -- above skips that body until P2's controller possesses it.
+  if state.playAsSix and spawn.phase=='waiting' and pc and live(driver.pawn) and live(pc.Pawn)
+   and not same(driver.pawn,pc.Pawn) and driver.pawn:GetFullName():find('BP_PlayerPawn_C',1,true) then
+   local ok,applied=pcall(sixAppearance.apply,sixAppearance,driver.pawn,true)
+   pcall(hats.hideForSix,hats,driver.pc,driver.pawn,pc)
+   if ok and applied and not state.waitingSixLogged then log('Apariencia P2: Six mientras espera suelo libre') end
+   state.waitingSixLogged=ok and applied or nil
+  end
   local path=root and (root..'../native-request.txt'); local f=path and io.open(path,'r')
   if f then
    local command=f:read('*l'); f:close(); os.remove(path)
@@ -759,11 +1020,52 @@ LoopInGameThreadWithDelay(16,safe(function()
    if command=='reload' then log('Reinicia el juego para cargar cambios; recarga en caliente deshabilitada') end
   end
  end
- local wantEvents=state.enabled and state.eventRedirect and spawn.phase=='active' and not death.pending
-  and live(driver.pawn) and not state.menu and native.api
- if wantEvents~=events.enabled then events:setEnabled(wantEvents) end
- if events.enabled then events:interact() end
- local cinematicBlocked=cinematics:update(cinematicNative:snapshot())
+ local nativeSix=sixControl:actor()
+ local storyPair=not ending and state.enabled and spawn.phase=='active'
+  and not spawn.pending and not death.pending and playable and native:ready()
+  and same(pc.Pawn.Controller,pc) and world(pc.Pawn,driver.pawn)
+  and (not nativeSix or (sixControl.ai and world(pc.Pawn,nativeSix))) and pc.Pawn:IsAlive()
+  and (nativeSix or driver.pawn):IsAlive()
+ local eventPair=storyPair and not nativeSix
+ local eventsPaused=state.menu or (storyPair and UE.GetGameplayStatics():IsGamePaused(pc))
+ local tvBlocked=false
+ if eventPair and playing and firstPath:find('/Game/Levels/PaleCity/PLVL_PaleCIty.',1,true) then
+  television:install(now)
+  local locked,follower=television:update(pc.Pawn,driver.pawn,UE.GetGameplayStatics():GetTimeSeconds(pc),eventsPaused)
+  tvBlocked=locked and same(follower,driver.pawn)
+ else television:reset() end
+ if storyPair and playing then
+  storyItems:update(pc.Pawn,nativeSix or driver.pawn,firstPath,now,eventsPaused,eventPair)
+ else storyItems:reset() end
+ local watchBox=eventPair and playing
+  and firstPath:find('/Game/Levels/Transmission/PLVL_Transmission.',1,true)
+ local boxTime=watchBox and UE.GetGameplayStatics():GetTimeSeconds(pc)
+ local musicBoxRecovering=musicBox:update(pc and pc.Pawn,driver.pawn,boxTime or 0,
+  watchBox,watchBox,eventsPaused,state.eventRedirect)
+  towerAxe:update(pc and pc.Pawn,driver.pawn,boxTime or 0,watchBox,eventsPaused)
+ local musicBoxLocked=musicBoxRecovering and musicBox.hit.fromSecond and not musicBox.hit.nativeSecond
+ events:setEnabled(not not (eventPair and playing and state.eventRedirect and not eventsPaused and not musicBoxLocked))
+ if events.enabled then events:interact(boxTime,musicBox.hit,now) end
+ if eventPair and playing then
+  bullyHead:update(pc.Pawn,driver.pawn,firstPath,now,events.enabled)
+  bullyRules:update(pc.Pawn,driver.pawn,firstPath,now,events.enabled)
+ else bullyRules:reset() end
+ subjects:setEnabled(eventPair and playing and state.eventRedirect,now)
+ if subjects.enabled then
+  local held=function(pawn)
+   local ok,actor=pcall(events.heldObject,events,pawn)
+   return ok and live(actor) and actor:GetAddress() or 0
+  end
+  subjects:holding(held(pc.Pawn),held(driver.pawn))
+ end
+ subjects:update(now)
+ local film=not ending and cinematicNative:snapshot(firstPath)or nil
+ local localSceneBlocked=cinematics:update(not nativeSix and film or nil)
+ local storyBlocked=(nativeSix and film and film.key~=nil and not film.allowInput)
+  or ending~=nil or musicBoxLocked or tvBlocked
+ local cinematicBlocked=localSceneBlocked or storyBlocked
+ local cameraBlocked=storyBlocked or (localSceneBlocked and not cinematics:keepsSplit())
+ local waitingForBoarding=cinematics:waitingForBoarding()
  if playing and playable then
   primaryRecovery:update(pc,fg and not state.menu and not cinematicBlocked and not death.pending and not menuSession.pc
    and same(pc.Pawn.Controller,pc) and pc.Pawn:IsAlive()
@@ -772,14 +1074,14 @@ LoopInGameThreadWithDelay(16,safe(function()
   primaryRecovery:update(nil,false)
  end
  ledgeRescue:interrupt(cinematicBlocked)
- cinematicTrace:update(now)
+ cinematicTrace:update(now,playing and playable and finalBridge:watchEnding(pc.Pawn))
  tpNative:update(now)
  state.tp.notice=teleport.notice
  state.rescueNotice=ledgeRescue:noticeText()
- local split=not cinematicBlocked and (state.cameraMode==3 or state.cameraMode==4) and state.enabled and spawn.phase=='active' and not spawn.pending and not death.pending
+ local split=not cameraBlocked and (state.cameraMode==3 or state.cameraMode==4) and state.enabled and spawn.phase=='active' and not spawn.pending and not death.pending
   and pc and world(pc,driver.pc) and world(pc.Pawn,driver.pawn) and same(driver.pc.Pawn,driver.pawn)
   and live(pc.PlayerCameraManager) and live(driver.pc.PlayerCameraManager)
-  and pc.Pawn:IsAlive() and driver.pawn:IsAlive() and not pc:IsMoveInputIgnored()
+  and pc.Pawn:IsAlive() and driver.pawn:IsAlive() and (waitingForBoarding or not pc:IsMoveInputIgnored())
  if setSplit(pc,not not split) then clearSeparation() end
  if state.split then camera:syncSplit(now,pc,state.fillScreen)
  elseif camera.split then camera:stop() end
@@ -788,14 +1090,14 @@ LoopInGameThreadWithDelay(16,safe(function()
   and not state.menu and pc and live(pc.Pawn) and world(pc.Pawn,driver.pawn)
   and not UE.GetGameplayStatics():IsGamePaused(pc) and not pc:IsMoveInputIgnored()
   and pc.Pawn:IsAlive() and driver.pawn:IsAlive() then
-  first,second=pc.Pawn,driver.pawn
+  first,second=pc.Pawn,nativeSix or driver.pawn
  end
- local pendingCall
- if fg then pendingCall=call:observe(first,second) else call:observe(nil,nil) end
+ local pendingCall,rescueCall
+ if fg then pendingCall,rescueCall=call:observe(first,second) else call:observe(nil,nil) end
  if fg and first and second and (pendingCall or state.call) then
   local firstAddress,secondAddress=first:GetAddress(),second:GetAddress()
   if pendingCall then
-   state.call,callUntil=pendingCall,now+2.5
+   state.call,state.callRescue,callUntil=pendingCall,rescueCall,now+2.5
    callFirst,callSecond=firstAddress,secondAddress
   elseif now>=callUntil or firstAddress~=callFirst or secondAddress~=callSecond then
    state.call=nil
@@ -810,7 +1112,9 @@ LoopInGameThreadWithDelay(16,safe(function()
  state.sixLocked=extrasMenu() and not canSelectSix(pc)
  local view,lost,side=ui:sync(pc,state,controls.bindings,first,second)
  camera:update(now,view)
- if not(separation.enabled and view and fg and spawnNative:playingGame(pc)) then view=nil end
+ if not(separation.enabled and view and fg and playing and not musicBox:protectsSeparation()
+   and not towerAxe:protectsSeparation() and not cinematics:protectsSeparation()
+   and not television:protectsSeparation()) then view=nil end
  local expired=separation:update(now,lost,side,view~=nil,first and first:GetAddress(),second and second:GetAddress())
  if expired then view=nil end
  local amount=view and separation.amount or 0
@@ -826,36 +1130,88 @@ LoopInGameThreadWithDelay(16,safe(function()
   status('Volviendo al punto de control');return
  end
  if not state.enabled then
+  hoist:reset()
+  ledgeRescue:reset()
+  sixControl:restore()
   death:reset()
   if driver.pc or driver.player then driver:remove() end
   return
  end
+ if ending then status('Secuencia del juego');return end
+ if musicBoxLocked then driver:stop();status('Secuencia del juego');return end
  if not pc or not live(pc.Pawn) or not pc.Pawn:GetFullName():find('BP_PlayerPawn_C',1,true) then
+  hoist:reset()
+  ledgeRescue:reset()
+  sixControl:restore()
   spawn:update(nil,false,false,false,0)
   driver:remove(); status('Esperando una partida'); return
  end
  spawn:observe(pc.Pawn)
- if (not spawn.pending or death.pending)and not death:update(pc,pc.Pawn,driver.pawn) then
+ local activeSecond=nativeSix and sixControl.ai and nativeSix or driver.pawn
+ if (not spawn.pending or death.pending)and not death:update(pc,pc.Pawn,activeSecond) then
   status('Volviendo al punto de control');return
  end
  local input=p2Input(pc)
  local paused=state.menu or UE.GetGameplayStatics():IsGamePaused(pc)
  local intent=input.x~=0 or input.y~=0 or input.jump or input.grab or input.sneak or input.sprint or input.use or input.gadget
- local ready=spawn:update(pc.Pawn,spawnNative:ready(pc),paused,intent,UE.GetGameplayStatics():GetTimeSeconds(pc))
- if state.playAsSix then sixAppearance:syncVisibility() end
+ local gameTime=UE.GetGameplayStatics():GetTimeSeconds(pc)
+ local ready=spawn:update(pc.Pawn,spawnNative:ready(pc),paused,intent,gameTime)
+ local locked=cinematicBlocked or pc:IsMoveInputIgnored()
+ local rescueOwnsPrimary=ledgeRescue:ownsAnimation(pc.Pawn)
+ local stageReady=playing and spawn.phase=='active' and not spawn.pending and not death.pending
+ if state.playAsSix then
+  local story
+  if ready or sixControl:actor() then
+   story=sixControl:sync(driver.pc,driver.pawn,pc,paused or not fg,
+    cinematicBlocked or (locked and not (hoist:ownsPawn(pc.Pawn) or rescueOwnsPrimary)),stageReady)
+  end
+  if story and not nativeSix then
+   sixAppearance:observeOutfit(driver.pawn,story)
+   ledgeRescue:reset();driver:stop();call:release()
+  elseif nativeSix and not story then
+   ledgeRescue:reset()
+   syncAppearance(driver.pc,driver.pawn,pc)
+  end
+  nativeSix=story
+  if not nativeSix then sixAppearance:syncVisibility() end
+ end
+ local partner=nativeSix or driver.pawn
+ local manual
+ if state.jumpAssist then
+  manual={held={menuDown(pc,'F3'),menuDown(pc,controls.bindings.boost)},moving=math.abs(input.x)+math.abs(input.y)>.22,
+   grab=function(role)if role==2 then return input.grab==true end;return ledgeRescue.base:held(pc.Pawn)end}
+ end
+ local hoisting=hoist:update(pc.Pawn,partner,manual,gameTime,paused or not fg,
+  not stageReady or not world(pc.Pawn,partner) or cinematicBlocked or (locked and not hoist:ownsPawn(pc.Pawn))
+   or (nativeSix and not sixControl.ai) or ledgeRescue.control.active~=nil)
  if not ready then
   driver:stop();status(paused and 'Pausa' or spawn:status());return
  end
  if paused then driver:stop();status('Pausa');return end
- if cinematicBlocked then status('Secuencia del juego');return end
- if pc:IsMoveInputIgnored()then driver:stop();status('Secuencia del juego');return end
- if not death:update(pc,pc.Pawn,driver.pawn) then
+ if cinematicBlocked or (locked and not rescueOwnsPrimary and not waitingForBoarding) then
+  if not cinematics:driving() then driver:stop() end
+  status('Secuencia del juego');return
+ end
+ if not death:update(pc,pc.Pawn,nativeSix and sixControl.ai and nativeSix or driver.pawn) then
   status('Volviendo al punto de control');return
  end
  local movementCamera=state.split and driver.pc.PlayerCameraManager or pc.PlayerCameraManager
- local direction=Input.direction(input.x,input.y,movementCamera:GetCameraRotation().Yaw)
- local rescuing=ledgeRescue:update(cinematicBlocked)
- local routedDirection,routedInput=ledgeRescue:route(direction,input,movementCamera:GetCameraRotation().Yaw)
+ local yaw=movementCamera:GetCameraRotation().Yaw
+ local direction=Input.direction(input.x,input.y,yaw)
+ local rescuing=ledgeRescue:update(hoisting)
+ local routedDirection,routedInput=ledgeRescue:route(direction,input,yaw)
+ if nativeSix then
+  local holding=hoist:blocks(nativeSix)
+  call:input(nativeSix,fg and not holding and sixControl.ai~=nil and routedInput.call)
+  if holding then sixControl:stop()
+  elseif fg then sixControl:update(routedDirection,routedInput) end
+  status(rescuing and 'Ayuda de la mano: pulsa F1 / F2 o LB para retirarla' or
+   (sixControl.ai and 'Cooperativo activado' or 'Secuencia del juego'))
+  return
+ end
+ if hoisting and hoist:blocks(driver.pawn) then
+  call:release();driver:stop();return
+ end
  call:input(driver.pawn,fg and routedInput.call)
  driver:update(routedDirection,routedInput)
  native:cage(now)
@@ -864,6 +1220,7 @@ LoopInGameThreadWithDelay(16,safe(function()
  trial.peakP1Z=math.max(trial.peakP1Z,pc.Pawn:K2_GetActorLocation().Z)
  if input.jump then trial.jumpFrames=trial.jumpFrames+1 end
  if input.grab then trial.grabFrames=trial.grabFrames+1 end
- status(rescuing and 'Rescate: manten F1 / F2 o LB' or (native.api and 'Cooperativo activado' or 'Jugador 2 activo; algunas acciones no están disponibles'))
+ status(rescuing and 'Ayuda de la mano: pulsa F1 / F2 o LB para retirarla' or (waitingForBoarding and 'P2: acércate a la balsa')
+  or (native.api and 'Cooperativo activado' or 'Jugador 2 activo; algunas acciones no están disponibles'))
 end))
 log(Menu.name..' · '..Menu.version..' | F6 menú | F7 activar cooperativo')

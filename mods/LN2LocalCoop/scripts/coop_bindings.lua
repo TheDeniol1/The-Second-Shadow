@@ -7,6 +7,7 @@ M.actions={
  {id='sneak',label='Agacharse'}, {id='sprint',label='Correr'},
  {id='use',label='Usar / lanzar'}, {id='gadget',label='Linterna / control remoto'},
  {id='call',label='Gritar / llamar'},
+ {id='boost',label='Impulsar al compañero'},
 }
 M.keys={}
 local valid={}
@@ -20,7 +21,7 @@ for _,name in ipairs({'Zero','One','Two','Three','Four','Five','Six','Seven','Ei
  'Decimal','Add','Subtract','Multiply','Divide','LeftMouseButton','RightMouseButton','MiddleMouseButton','ThumbMouseButton','ThumbMouseButton2',
  'Escape'}) do key(name)end
 for i=1,12 do key('F'..i)end
-M.reserved={F6=true,F7=true,F8=true,Escape=true}
+M.reserved={F3=true,F6=true,F7=true,F8=true,Escape=true}
 local extraDefaults={'M','N','B','T','G','V','C','NumPadTwo','NumPadThree','NumPadSeven','NumPadEight','NumPadNine'}
 local names={SpaceBar='Espacio',Enter='Enter',BackSpace='Retroceso',Escape='Esc',
  LeftShift='Shift izq.',RightShift='Shift der.',LeftControl='Ctrl izq.',RightControl='Ctrl der.',
@@ -48,13 +49,13 @@ function M.new(defaults,data,options)
  local occupied={}
  for _,action in ipairs(self.actions)do
   local id=action.id
-  if saved[id] or (id~='gadget' and id~='call') then occupied[self.bindings[id]]=true end
+  if saved[id] or (id~='gadget' and id~='call' and id~='boost') then occupied[self.bindings[id]]=true end
  end
  for value in (data or ''):gmatch('tp%.toP[12]=([%w]+)')do occupied[value]=true end
  local function available(value)
   return not occupied[value] and not M.reserved[value] and not(self.blocked and self.blocked(value))
  end
- for _,id in ipairs({'gadget','call'})do
+ for _,id in ipairs({'gadget','call','boost'})do
   if self.actionIds[id] and not saved[id] then
    local current=self.bindings[id]
    if not available(current) then
@@ -92,6 +93,7 @@ function M:serialize()
 end
 function M:assign(id,name)
  if not self.actionIds[id] or not valid[name] then return false,'Tecla no reconocida' end
+ if name=='F3' then return false,'F3 se usa para el impulso de P1' end
  if M.reserved[name] then return false,'Esa tecla se usa en el menú. Elige otra.' end
  local blocked=self.blocked and self.blocked(name)
  if blocked then return false,blocked end

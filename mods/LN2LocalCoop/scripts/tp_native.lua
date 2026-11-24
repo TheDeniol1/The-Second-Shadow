@@ -1,4 +1,4 @@
--- Teleport only the two owned Monos. Puzzle state and Six are never modified.
+-- Validate local-player ownership before resolving P2's current character.
 local N={};N.__index=N
 function N.new(c)return setmetatable({c=c,emitters={}},N)end
 function N:primaryKeys()
@@ -28,6 +28,13 @@ function N:players()
  if not a:GetFullName():find('BP_PlayerPawn_C',1,true)or not b:GetFullName():find('BP_PlayerPawn_C',1,true)then return nil,nil,'Esperando a los dos Monos'end
  if c.same(a,b)or second.Player.ControllerId~=1 or not c.same(second.Pawn,b)or not c.same(b.Controller,second)
   or not c.same(a.Controller,pc)or not c.world(a,b)then return nil,nil,'Esperando a los personajes de esta zona'end
+ if c.playpal then
+  local story,controlled=c.playpal()
+  if c.live(story) then
+   if not controlled or not c.world(a,story)then return nil,nil,'Espera a que Six termine la acción'end
+   b=story
+  end
+ end
  return a,b
 end
 function N:blocked(p)
@@ -44,7 +51,7 @@ function N:blocked(p)
   if c.live(item)and c.same(item:GetHolderIfHeld(),p)then return 'Deja el objeto antes de reunirte'end
  end
  local pc=c.p1()
- if c.same(p,c.driver.pawn)then
+ if c.same(p,c.driver.pawn)or (c.playpal and c.same(p,c.playpal()))then
   local input=c.input()
   if input.jump or input.grab or input.use or input.sneak or input.sprint then return 'Jugador 2: suelta los controles antes de reunirte'end
  else
@@ -111,7 +118,8 @@ function N:api()
   blocked=function(p)return self:blocked(p)end,location=function(p)return p:K2_GetActorLocation()end,
   clear=function(a,b,at)return self:clear(a,b,at)end,
   move=function(p,at)
-   if c.same(p,c.driver.pawn)then c.driver:stop()end
+   if c.same(p,c.driver.pawn)then c.driver:stop()
+   elseif c.playpal and c.same(p,c.playpal())then c.stopPlaypal()end
    p.CharacterMovement:StopMovementImmediately()
    return p:K2_SetActorLocation(at,false,{},true)
   end,

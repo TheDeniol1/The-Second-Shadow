@@ -20,6 +20,14 @@ function N:noticeText()
  if self.notice and (self.c.clock and self.c.clock()or os.clock())<self.noticeUntil then return self.notice end
  self.notice=nil
 end
+function N:secondPawn()
+ local c=self.c
+ if c.playpal then
+  local six,controlled=c.playpal()
+  if c.live(six) then return six,controlled end
+ end
+ return c.driver.pawn,true
+end
 function N:pair()
  local c=self.c;local pc=c.p1();local q=c.driver.pawn
  if not c.state.enabled or c.state.menu or c.spawn.phase~='active' or c.spawn.pending or c.death.pending
@@ -28,14 +36,22 @@ function N:pair()
  local p=pc.Pawn
  if not c.world(p,q) or c.same(p,q) or not c.same(p.Controller,pc)
   or not c.same(q.Controller,c.driver.pc) or not c.same(c.driver.pc.Pawn,q)
-  or not p:IsAlive() or not q:IsAlive() or pc:IsMoveInputIgnored() then return end
- return p,q
+  or not p:IsAlive() or not q:IsAlive()
+  or (pc:IsMoveInputIgnored() and not (c.ownsPrimary and c.ownsPrimary(p))) then return end
+ local partner,controlled=self:secondPawn()
+ if not controlled or not c.world(p,partner) or c.same(p,partner) or not partner:IsAlive() then return end
+ if not c.same(partner,q) then
+  local ai=partner.Controller
+  if not c.live(ai) or not c.same(ai.Pawn,partner) or not c.live(ai.mBodyAnimator)
+   or not c.same(ai.mBodyAnimator.mPawnSelf,partner) then return end
+ end
+ return p,partner
 end
 function N:ledge(p)
  local c=self.c
  if not c.live(p.Mesh)then return end
  local anim=p.Mesh:GetAnimInstance()
- if not c.live(anim)or not anim.mLedgeData.mIsHanging then return end
+ if not c.live(anim)or not anim.mLedgeData or not anim.mLedgeData.mIsHanging then return end
  local interface=anim.mCurrentlyActiveGrabInterface
  local class=StaticFindObject('/Script/Helios.LedgeClimbingInterface')
  if not c.live(interface)or not c.live(class)or not interface:IsA(class)then return end
@@ -55,9 +71,9 @@ function N:select()
 end
 function N:held(p)
  local c=self.c
- if c.same(p,c.driver.pawn)then return c.input().grab end
+ if c.same(p,self:secondPawn())then return c.input().grab end
  -- Read configured keyboard mappings; the assigned XInput pad uses the same RT as normal play.
- local pad=c.gamepad.owner==1 and not c.gamepad.routed and c.gamepad.sample
+ local pad=c.gamepad:forRole(1)
  if pad and pad.grab then return true end
  local settings=StaticFindObject('/Script/Engine.Default__InputSettings')
  local mappings={}
@@ -259,8 +275,9 @@ end
 function N:route(direction,input,yaw)
  local a=self.control.active;local c=self.c
  if not a then return direction,input end
- local victim=c.same(c.driver.pawn,a.p)
- local helper=c.same(c.driver.pawn,a.h)
+ local partner=self:secondPawn()
+ local victim=c.same(partner,a.p)
+ local helper=c.same(partner,a.h)
  if not victim and not helper then return direction,input end
  local d=victim and a.driven and a.direction or {X=0,Y=0,Z=0}
  local angle=math.rad(yaw)
@@ -278,7 +295,7 @@ function N:maintain()
  if c.live(a.p)and c.same(a.p.Controller,a.pc)then
   local d=a.driven and a.direction or {X=0,Y=0,Z=0}
   a.pc.mBodyAnimator:SetMoveInput(d)
-  local yaw=math.rad(a.pc.PlayerCameraManager:GetCameraRotation().Yaw)
+  local yaw=math.rad(c.cameraYaw and c.cameraYaw(a.p) or a.pc.PlayerCameraManager:GetCameraRotation().Yaw)
   a.pc.mBodyAnimator:SetRawMoveInput({X=math.cos(yaw)*d.X+math.sin(yaw)*d.Y,
    Y=-math.sin(yaw)*d.X+math.cos(yaw)*d.Y,Z=0})
  end

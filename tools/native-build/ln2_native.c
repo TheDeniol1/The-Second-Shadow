@@ -10,6 +10,7 @@
 #include "runtime-identity.h"
 typedef struct lua_State lua_State;
 typedef int (*LuaFn)(lua_State*);
+static int (*gettop)(lua_State*);
 static long long (*toint)(lua_State*,int,int*);
 static double (*tonum)(lua_State*,int,int*);
 static void (*pushbool)(lua_State*,int);
@@ -22,6 +23,7 @@ static int (*luaerr)(lua_State*,const char*,...);
 static unsigned char *game;
 static uintptr_t owner,player,pawn,primary,primary_pawn;
 static DWORD game_thread;
+static void clear_school_escort(void);
 /* XInput's fixed Windows ABI. TinyCC's SDK does not ship xinput.h. */
 typedef struct {
  DWORD packet;
@@ -85,6 +87,7 @@ static int bind_owner(lua_State *L){
  int valid=0;
  uintptr_t values[5];
  for(int i=0;i<5;i++){values[i]=(uintptr_t)toint(L,i+1,&valid);if(!valid)return luaerr(L,"Expected five object addresses");}
+ if(owner!=values[0] || pawn!=values[2] || primary_pawn!=values[4])clear_school_escort();
  owner=values[0];player=values[1];pawn=values[2];primary=values[3];primary_pawn=values[4];
  game_thread=GetCurrentThreadId();checked(L);pushbool(L,1);return 1;
 }
@@ -93,6 +96,35 @@ static int crouch(lua_State *L){
  if(!valid || !(value>=0.0 && value<=1.0))return luaerr(L,"Crouch amount must be between zero and one");
  typedef void (*Axis)(void*,float);
  ((Axis)(game+0xae0510))((void*)owner,(float)value);
+ pushbool(L,1);return 1;
+}
+static int six_crouch(lua_State *L){
+ if(GetCurrentThreadId()!=game_thread)return luaerr(L,"Six input must run on the bound game thread");
+ int valid=0;
+ uintptr_t six=(uintptr_t)toint(L,1,&valid);
+ if(!valid)return luaerr(L,"Expected Six's pawn address");
+ uintptr_t animator=(uintptr_t)toint(L,2,&valid);
+ if(!valid)return luaerr(L,"Expected Six's animator address");
+ long long held=toint(L,3,&valid);
+ if(!valid || (held!=0 && held!=1))return luaerr(L,"Expected a crouch button state");
+ /* A release can accompany a controller replacement. Verify the old Six and
+  * her animator before clearing input, even if the spare local pawn is gone. */
+ if((held && !owns_second()) || six==pawn || six==primary_pawn
+  || !readable(six,0x678) || !readable(animator,0x100) || *(uintptr_t*)(animator+0xf8)!=six){
+  pushbool(L,0);return 1;
+ }
+ uintptr_t controller=*(uintptr_t*)(six+0x250);
+ uintptr_t wrapper=*(uintptr_t*)(six+0x670);
+ if(controller==owner || controller==primary || !readable(controller,0x2b0) || !readable(wrapper,0x30)
+  || *(uintptr_t*)(controller+0x248)!=six || *(uintptr_t*)(controller+0x2a8)!=animator){
+  pushbool(L,0);return 1;
+ }
+ uintptr_t board=*(uintptr_t*)(wrapper+0x28);
+ if(!readable(board,0x1c0)){pushbool(L,0);return 1;}
+ /* AxisCrouch and SneakComponent both write this float to the pawn's chalkboard. */
+ const float amount=held ? 1.0f : 0.0f;
+ typedef void (*SetFloat)(void*,const void*,const float*);
+ ((SetFloat)(game+0x99ea90))((void*)board,game+0x3eb7ae0,&amount);
  pushbool(L,1);return 1;
 }
 typedef void (*BlueprintNative)(void*,void*,void*);
@@ -105,7 +137,175 @@ typedef struct { uintptr_t actor; int target; } RouteEntry;
 static RouteEntry *route_entries;
 static size_t route_count,route_capacity;
 static int route_enabled;
-static int p2_interacting;
+static int frame_rule_enabled;
+static unsigned int frame_rule_reads;
+static uintptr_t box_pawn,box_primary;
+static DWORD box_route_tick;
+static unsigned int box_route_reads;
+
+enum { weapon_dispatch_call=0xa5fe6f, multicast_dispatch=0x53b370, max_hit_receivers=32 };
+typedef struct {
+ uintptr_t instigator, actor;
+ uintptr_t receivers[max_hit_receivers];
+ size_t count;
+} WeaponHit;
+static const WeaponHit *weapon_hit;
+static unsigned char *weapon_dispatch_bridge;
+static unsigned int weapon_hit_reads;
+
+static void dispatch_weapon_hit(void *delegate,void *params){
+ typedef void (*Dispatch)(void*,void*);
+ Dispatch dispatch=(Dispatch)(game+multicast_dispatch);
+ if(GetCurrentThreadId()!=game_thread || !route_enabled){
+  dispatch(delegate,params);
+  return;
+ }
+
+ /* DamageReciever::mOnWeaponHit is at 0xb0. Its first parameter is Instigator.
+  * Capture the component owner and the live recipients of this exact event. */
+ WeaponHit hit={0};
+ const WeaponHit *previous=weapon_hit;
+ uintptr_t receiver=(uintptr_t)delegate-0xb0;
+ if(readable((uintptr_t)params,sizeof(uintptr_t)))hit.instigator=*(uintptr_t*)params;
+ if(readable(receiver,0xc0)){
+  hit.actor=*(uintptr_t*)(receiver+0xa0); /* UActorComponent::GetOwner. */
+  uintptr_t list=*(uintptr_t*)delegate;
+  int count=*(int*)((unsigned char*)delegate+8);
+  if(count>0 && count<=max_hit_receivers && readable(list,(size_t)count*16)){
+   typedef void* (*ResolveWeak)(void*);
+   for(int i=0;i<count;i++){
+    uintptr_t target=(uintptr_t)((ResolveWeak)(game+0xee2420))((void*)(list+(size_t)i*16));
+    if(target)hit.receivers[hit.count++]=target;
+   }
+  }
+ }
+ weapon_hit=&hit;
+ dispatch(delegate,params);
+ weapon_hit=previous;
+}
+
+static int hit_recipient(const WeaponHit *hit,uintptr_t actor){
+ if(!actor)return 0;
+ if(hit->actor==actor)return 1;
+ for(size_t i=0;i<hit->count;i++)if(hit->receivers[i]==actor)return 1;
+ return 0;
+}
+
+static int install_relative_call(unsigned long site,unsigned long original_offset,
+ const unsigned char *expected,size_t length,uintptr_t wrapper,unsigned char **installed){
+ if(*installed)return 1;
+ unsigned char *call=game+site;
+ if(((uintptr_t)(call+1)&3) || !readable((uintptr_t)call,length) || memcmp(call,expected,length)!=0)return 0;
+
+ /* The original five-byte call can reach only a nearby destination. Keep the
+  * bridge separate from game code and make it executable after writing it. */
+ SYSTEM_INFO info;
+ GetSystemInfo(&info);
+ uintptr_t step=info.dwAllocationGranularity;
+ uintptr_t base=(uintptr_t)call & ~(step-1);
+ unsigned char *bridge=NULL;
+ for(uintptr_t delta=step;delta<0x7fff0000 && !bridge;delta+=step){
+  if(base>delta)bridge=VirtualAlloc((void*)(base-delta),16,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
+  if(!bridge)bridge=VirtualAlloc((void*)(base+delta),16,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
+ }
+ if(!bridge)return 0;
+ const unsigned char start[]={0x48,0xb8}; /* mov rax, wrapper; jmp rax */
+ const unsigned char finish[]={0xff,0xe0};
+ memcpy(bridge,start,sizeof(start));
+ memcpy(bridge+2,&wrapper,sizeof(wrapper));
+ memcpy(bridge+10,finish,sizeof(finish));
+
+ DWORD old,unused;
+ HMODULE pinned;
+ if(!VirtualProtect(bridge,16,PAGE_EXECUTE_READ,&old) ||
+    !FlushInstructionCache(GetCurrentProcess(),bridge,12) ||
+    !GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_PIN,
+                        (LPCWSTR)wrapper,&pinned) ||
+    !VirtualProtect(call,5,PAGE_EXECUTE_READWRITE,&old)){
+  VirtualFree(bridge,0,MEM_RELEASE);
+  return 0;
+ }
+ /* The immediate operand is aligned in this build. Leave another mod's
+  * replacement alone if the target changed after the signature check. */
+ LONG relative=(LONG)((intptr_t)bridge-(intptr_t)(call+5));
+ LONG original=(LONG)(original_offset-site-5);
+ if(InterlockedCompareExchange((volatile LONG*)(call+1),relative,original)!=original){
+  VirtualProtect(call,5,old,&unused);
+  VirtualFree(bridge,0,MEM_RELEASE);
+  return 0;
+ }
+ FlushInstructionCache(GetCurrentProcess(),call,5);
+ VirtualProtect(call,5,old,&unused);
+ *installed=bridge;
+ return 1;
+}
+
+static int install_weapon_dispatch(void){
+ const unsigned char expected[]={0xe8,0xfc,0xb4,0xad,0xff,0x48,0x83,0xc4,0x58,0xc3};
+ return install_relative_call(weapon_dispatch_call,multicast_dispatch,expected,sizeof(expected),
+  (uintptr_t)dispatch_weapon_hit,&weapon_dispatch_bridge);
+}
+
+enum { school_perception_call=0x9c4f93, ignore_stimulus=0x9c2a00, max_school_observers=48 };
+static unsigned char *school_perception_bridge;
+static uintptr_t school_pawn,school_observers[max_school_observers];
+static int school_count;
+static unsigned int school_reads;
+static void clear_school_escort(void){school_pawn=0;school_count=0;}
+
+static int protected_stimulus(void *analyzer,void *owned_stimulus){
+ if(!school_pawn || GetCurrentThreadId()!=game_thread || !owns_second())return 0;
+ int i=0;
+ while(i<school_count && school_observers[i]!=(uintptr_t)analyzer)i++;
+ if(i==school_count || !readable((uintptr_t)owned_stimulus,sizeof(uintptr_t)))return 0;
+ uintptr_t stimulus=*(uintptr_t*)owned_stimulus;
+ if(!readable(stimulus,0x90))return 0;
+ typedef void* (*ResolveWeak)(void*);
+ ResolveWeak resolve=(ResolveWeak)(game+0xee2420);
+ uintptr_t actor=(uintptr_t)resolve((void*)(stimulus+0x80));
+ if(actor && actor!=school_pawn)return 0;
+ /* The secondary weak reference is PawnPropertiesComponent, not a pawn. */
+ uintptr_t properties=(uintptr_t)resolve((void*)(stimulus+0x88));
+ if(properties)
+  return readable(school_pawn,0x680) && *(uintptr_t*)(school_pawn+0x678)==properties;
+ return actor==school_pawn;
+}
+
+static unsigned char school_ignore_stimulus(void *analyzer,void *owned_stimulus){
+ int escorted=protected_stimulus(analyzer,owned_stimulus);
+ typedef unsigned char (*IgnoreStimulus)(void*,void*);
+ /* The original consumes the reference passed by the caller. Run it even
+  * when an escort overrides the result. */
+ unsigned char ignored=((IgnoreStimulus)(game+ignore_stimulus))(analyzer,owned_stimulus);
+ if(escorted && !ignored)school_reads++;
+ return ignored || escorted;
+}
+
+static int school_escort(lua_State *L){
+ if(GetCurrentThreadId()!=game_thread)return luaerr(L,"School escort must run on the bound game thread");
+ int valid=0;
+ uintptr_t companion=(uintptr_t)toint(L,1,&valid);
+ if(!valid)return luaerr(L,"Expected escorted pawn address");
+ if(!companion){clear_school_escort();return 0;}
+ int count=gettop(L)-1;
+ if(!owns_second() || companion==primary_pawn || !readable(companion,0x680)
+  || count<1 || count>max_school_observers)return luaerr(L,"Invalid school escort context");
+ uintptr_t observers[max_school_observers];
+ for(int i=0;i<count;i++){
+  observers[i]=(uintptr_t)toint(L,i+2,&valid);
+  if(!valid || !readable(observers[i],0xf0))return luaerr(L,"Invalid school observer");
+ }
+ const unsigned char expected[]={0xe8,0x68,0xda,0xff,0xff,0x48,0x8b,0x5f,0x08,0x84,0xc0};
+ if(!install_relative_call(school_perception_call,ignore_stimulus,expected,sizeof(expected),
+     (uintptr_t)school_ignore_stimulus,&school_perception_bridge))
+  return luaerr(L,"The school perception call does not match the supported build");
+ memcpy(school_observers,observers,(size_t)count*sizeof(uintptr_t));
+ school_pawn=companion;
+ school_count=count;
+ return 0;
+}
+
+static int school_escort_reads(lua_State *L){pushint(L,school_reads);return 1;}
 
 static int second_crossed_tripwire(uintptr_t level){
  /* The level's tripwire retains OtherActor in its persistent Blueprint frame. */
@@ -116,38 +316,243 @@ static int second_crossed_tripwire(uintptr_t level){
  return readable(locals,0x60) && *(uintptr_t*)(locals+0x58)==pawn;
 }
 
-static void interaction_player(void *context,void *stack,void *result){
- unsigned char *frame=stack;
- unsigned char *code=*(unsigned char**)(frame+0x20);
- ((BlueprintNative)(game+0xbe9e00))(context,stack,result);
- if(GetCurrentThreadId()!=game_thread)return;
+
+/* Bounds of the calling thread's stack (Windows 8 and later). Only the game
+ * thread calls it, and only from Blueprint lookups. */
+static void thread_stack_bounds(uintptr_t *low,uintptr_t *high){
+ typedef void (WINAPI *Limits)(PULONG_PTR,PULONG_PTR);
+ static Limits limits;
+ static int resolved;
+ if(!resolved){
+  HMODULE kernel=GetModuleHandleA("kernel32.dll");
+  limits=kernel?(Limits)GetProcAddress(kernel,"GetCurrentThreadStackLimits"):NULL;
+  resolved=1;
+ }
+ *low=*high=0;
+ if(limits){ULONG_PTR l=0,h=0;limits(&l,&h);*low=(uintptr_t)l;*high=(uintptr_t)h;}
+}
+
+/* Event subject observation (phase 0). Read only: it records which player the
+ * calling Blueprint frames refer to, without changing the lookup result.
+ * FFrame layout confirmed in UObject::ProcessEvent of this build (0xecddc3):
+ * Node 0x10, Object 0x18, Code 0x20, Locals 0x28, PreviousFrame 0x70.
+ * UStruct::PropertiesSize is 0x50 and Script 0x58 in the same function. */
+enum { frame_node=0x10, frame_object=0x18, frame_locals=0x28, frame_previous=0x70,
+ struct_properties_size=0x50, struct_script=0x58, subject_scan_bytes=4096, subject_depth=4,
+ subject_slots=1024, subject_limit=768 };
+enum { verdict_none, verdict_p1, verdict_p2, verdict_both, verdict_self1, verdict_self2, verdict_count };
+typedef struct {
+ uintptr_t graph,actor;
+ unsigned int counts[verdict_count];
+ unsigned int routed;
+ unsigned int grabs[2];
+ int depth;
+ int offsets[2];
+ long code;
+ int dirty;
+} SubjectEntry;
+static SubjectEntry subject_entries[subject_slots];
+static size_t subject_count,subject_cursor;
+static unsigned int subject_dropped;
+static int subject_enabled;
+static uintptr_t subject_grab[2];
+
+/* Slots where a player lookup has left its answer. Persistent Ubergraph
+ * frames keep those answers (P1) next to fresh event parameters, so a frame
+ * that stored an old answer must not count as naming P1. */
+enum { return_slot_capacity=1024 };
+typedef struct { uintptr_t node; int offset; } ReturnSlot;
+static ReturnSlot return_slots[return_slot_capacity];
+static unsigned int return_slot_count;
+
+static size_t return_slot_hash(uintptr_t node,int offset){
+ return (size_t)(((node>>4)*0x9e3779b97f4a7c15ULL)^((uint64_t)(unsigned)offset*0xc2b2ae3d27d4eb4fULL))%return_slot_capacity;
+}
+
+static int return_slot_known(uintptr_t node,int offset){
+ if(!node || !return_slot_count)return 0;
+ size_t i=return_slot_hash(node,offset);
+ for(size_t probe=0;probe<return_slot_capacity;probe++,i=(i+1)%return_slot_capacity){
+  if(!return_slots[i].node)return 0;
+  if(return_slots[i].node==node && return_slots[i].offset==offset)return 1;
+ }
+ return 0;
+}
+
+static void return_slot_note(unsigned char *frame,uintptr_t result){
+ if(!frame)return;
+ uintptr_t node=*(uintptr_t*)(frame+frame_node),locals=*(uintptr_t*)(frame+frame_locals);
+ if(!node || !locals || result<locals || !readable(node,struct_script))return;
+ int size=*(int*)(node+struct_properties_size);
+ if(size<=0 || result-locals>=(uintptr_t)size || (result-locals)%sizeof(uintptr_t))return;
+ int offset=(int)(result-locals);
+ if(return_slot_known(node,offset) || return_slot_count>=return_slot_capacity*3/4)return;
+ size_t i=return_slot_hash(node,offset);
+ while(return_slots[i].node)i=(i+1)%return_slot_capacity;
+ return_slots[i].node=node;return_slots[i].offset=offset;
+ return_slot_count++;
+}
+
+static int subject_scan(uintptr_t node,uintptr_t locals,int size,uintptr_t second,uintptr_t first,uintptr_t exclude,int offsets[2]){
+ if(size<=0 || !locals)return 0;
+ if(size>subject_scan_bytes)size=subject_scan_bytes;
+ if(!readable(locals,(size_t)size))return 0;
+ const uintptr_t *slots=(const uintptr_t*)locals;
+ size_t n=(size_t)size/sizeof(uintptr_t);
+ int found=0;
+ for(size_t i=0;i<n && found!=3;i++){
+  /* The lookup's own return slot holds the answer, not a subject. */
+  if((uintptr_t)&slots[i]==exclude)continue;
+  if((slots[i]==second || slots[i]==first) && return_slot_known(node,(int)(i*sizeof(uintptr_t))))continue;
+  if(slots[i]==second && !(found&2)){found|=2;offsets[1]=(int)(i*sizeof(uintptr_t));}
+  else if(slots[i]==first && !(found&1)){found|=1;offsets[0]=(int)(i*sizeof(uintptr_t));}
+ }
+ return found;
+}
+
+/* The nearest frame that names a player decides. A frame naming both players
+ * is ambiguous and must never redirect a lookup. */
+/* Script functions keep their locals on the game thread's stack and clear
+ * them on entry. Ubergraph locals live on the object and keep old values. */
+static int stack_local(uintptr_t p){
+ uintptr_t low=0,high=0;
+ thread_stack_bounds(&low,&high);
+ return low && p>=low && p<high;
+}
+
+static int subject_verdict_from(unsigned char *frame,uintptr_t second,uintptr_t first,uintptr_t exclude,int fresh,int *depth,int offsets[2]){
+ *depth=-1;offsets[0]=offsets[1]=-1;
+ if(!frame || !second || !first)return verdict_none;
+ uintptr_t actor=*(uintptr_t*)(frame+frame_object);
+ if(actor==second)return verdict_self2;
+ if(actor==first)return verdict_self1;
+ for(int d=0;d<subject_depth && frame;d++){
+  uintptr_t node=*(uintptr_t*)(frame+frame_node);
+  uintptr_t locals=*(uintptr_t*)(frame+frame_locals);
+  if(node && readable(node,struct_script) && (!fresh || stack_local(locals))){
+   int found=subject_scan(node,*(uintptr_t*)(frame+frame_locals),*(int*)(node+struct_properties_size),second,first,exclude,offsets);
+   if(found){*depth=d;return found==3?verdict_both:found==2?verdict_p2:verdict_p1;}
+  }
+  uintptr_t previous=*(uintptr_t*)(frame+frame_previous);
+  frame=previous && readable(previous,frame_previous+sizeof(uintptr_t))?(unsigned char*)previous:NULL;
+ }
+ return verdict_none;
+}
+
+static int subject_verdict(unsigned char *frame,uintptr_t second,uintptr_t first,uintptr_t exclude,int *depth,int offsets[2]){
+ return subject_verdict_from(frame,second,first,exclude,0,depth,offsets);
+}
+
+/* Phase 1, rule 1: a script that is handling P2 (an overlap, a hit, a step)
+ * and names no P1 is asking about P2. Only fresh frames decide: the function
+ * itself, or the event stub that started the Ubergraph, whose parameters
+ * belong to this event. Persistent Ubergraph locals may hold any earlier
+ * player and are skipped. Ambiguous frames and the pawns' own Blueprints keep P1. */
+enum { frame_rule_depth=2 };
+static int frame_names_second(unsigned char *frame,uintptr_t second,uintptr_t first,uintptr_t exclude){
+ int depth,offsets[2];
+ return subject_verdict_from(frame,second,first,exclude,1,&depth,offsets)==verdict_p2 && depth<=frame_rule_depth;
+}
+
+static SubjectEntry *subject_slot(uintptr_t graph,uintptr_t actor){
+ size_t i=(size_t)(((graph>>4)*0x9e3779b97f4a7c15ULL)^((actor>>4)*0xc2b2ae3d27d4eb4fULL))%subject_slots;
+ for(size_t probe=0;probe<subject_slots;probe++,i=(i+1)%subject_slots){
+  SubjectEntry *e=&subject_entries[i];
+  if(e->graph==graph && e->actor==actor)return e;
+  if(!e->graph){
+   if(subject_count>=subject_limit){subject_dropped++;return NULL;}
+   memset(e,0,sizeof(*e));
+   e->graph=graph;e->actor=actor;
+   subject_count++;
+   return e;
+  }
+ }
+ subject_dropped++;
+ return NULL;
+}
+
+static void subject_record(unsigned char *frame,unsigned char *code,int routed,uintptr_t second,uintptr_t first,uintptr_t exclude){
+ uintptr_t graph=*(uintptr_t*)(frame+frame_node),actor=*(uintptr_t*)(frame+frame_object);
+ if(!graph)return;
+ int depth,offsets[2];
+ int verdict=subject_verdict(frame,second,first,exclude,&depth,offsets);
+ SubjectEntry *e=subject_slot(graph,actor);
+ if(!e)return;
+ e->counts[verdict]++;
+ if(routed)e->routed++;
+ /* The object a player holds right now, as reported by Lua each tick. */
+ for(int i=0;i<2;i++)if(actor && actor==subject_grab[i])e->grabs[i]++;
+ e->depth=depth;
+ e->offsets[0]=offsets[0];e->offsets[1]=offsets[1];
+ uintptr_t script=readable(graph,struct_script+sizeof(uintptr_t))?*(uintptr_t*)(graph+struct_script):0;
+ e->code=script && (uintptr_t)code>=script?(long)((uintptr_t)code-script):-1;
+ e->dirty=1;
+}
+
+static void subject_reset(void){
+ memset(subject_entries,0,sizeof(subject_entries));
+ subject_count=subject_cursor=0;
+ subject_dropped=0;
+ subject_grab[0]=subject_grab[1]=0;
+}
+
+static void route_player(unsigned char *frame,unsigned char *code,void *result){
  uintptr_t graph=*(uintptr_t*)(frame+0x10);
  uintptr_t actor=*(uintptr_t*)(frame+0x18);
  if(vent_actor && graph==vent_graph && actor==vent_actor && owns_second()){
   *(uintptr_t*)result=pawn;
   vent_reads++;
+  return;
  }
  if(cage_graph && graph==cage_graph && code==cage_code &&
     owns_second() && second_crossed_tripwire(actor)){
   *(uintptr_t*)result=pawn;
   cage_reads++;
+  return;
  }
- /* Generic route: Lua registers actors whose nearest player is P2. */
- if(route_enabled && owns_second()){
+ if(!route_enabled || !owns_second())return;
+ if(weapon_hit){
+  if(weapon_hit->instigator!=pawn)return;
+  if(hit_recipient(weapon_hit,actor)){
+   *(uintptr_t*)result=pawn;
+   weapon_hit_reads++;
+   return;
+  }
+ }else{
   for(size_t i=0;i<route_count;i++)
    if(route_entries[i].actor==actor && route_entries[i].target==1){
     *(uintptr_t*)result=pawn;
-    break;
+    return;
    }
  }
- /* P2 is actively grabbing something: level scripts should act on P2. */
- if(route_enabled && p2_interacting && owns_second()){
+ /* Lua renews this only during P2's final music box interaction. */
+ if(box_pawn==pawn && box_primary==primary_pawn && GetTickCount()-box_route_tick<250 &&
+    *(uintptr_t*)result==primary_pawn){
   *(uintptr_t*)result=pawn;
+  box_route_reads++;
  }
 }
 
+static void interaction_player(void *context,void *stack,void *result){
+ unsigned char *frame=stack;
+ unsigned char *code=*(unsigned char**)(frame+0x20);
+ ((BlueprintNative)(game+0xbe9e00))(context,stack,result);
+ if(GetCurrentThreadId()!=game_thread)return;
+ uintptr_t original=*(uintptr_t*)result;
+ if(route_enabled || subject_enabled)return_slot_note(frame,(uintptr_t)result);
+ route_player(frame,code,result);
+ if(frame_rule_enabled && route_enabled && !weapon_hit && owns_second() &&
+    *(uintptr_t*)result==primary_pawn && primary_pawn &&
+    frame_names_second(frame,pawn,primary_pawn,(uintptr_t)result)){
+  *(uintptr_t*)result=pawn;
+  frame_rule_reads++;
+ }
+ if(subject_enabled && owns_second())
+  subject_record(frame,code,original!=*(uintptr_t*)result,pawn,primary_pawn,(uintptr_t)result);
+}
+
 static void release_player_lookup(void){
- if(!player_lookup || vent_actor || cage_graph || route_enabled)return;
+ if(!player_lookup || vent_actor || cage_graph || route_enabled || subject_enabled)return;
  InterlockedCompareExchangePointer(player_lookup,game+0xbe9e00,(void*)interaction_player);
  player_lookup=NULL;
 }
@@ -235,11 +640,30 @@ static int route_clear(lua_State *L){
  free(route_entries);route_entries=NULL;route_count=route_capacity=0;return 0;
 }
 
-static int set_interacting(lua_State *L){
+static int route_hit_reads(lua_State *L){
+ pushint(L,weapon_hit_reads);
+ return 1;
+}
+
+static int route_music_box(lua_State *L){
  int valid=0;long long on=toint(L,1,&valid);
- if(!valid || (on!=0 && on!=1))return luaerr(L,"Expected interacting zero or one");
- p2_interacting=(int)on;
- return 0;
+ if(!valid || (on!=0 && on!=1) || GetCurrentThreadId()!=game_thread)
+  return luaerr(L,"Expected box route state on the bound game thread");
+ box_pawn=on && route_enabled && owns_second()?pawn:0;
+ box_primary=primary_pawn;
+ box_route_tick=GetTickCount();
+ pushint(L,box_route_reads);
+ return 1;
+}
+
+static int route_frames(lua_State *L){
+ int valid=0;long long on=toint(L,1,&valid);
+ if(!valid || (on!=0 && on!=1))return luaerr(L,"Expected frame rule state zero or one");
+ if(game_thread && GetCurrentThreadId()!=game_thread)
+  return luaerr(L,"The frame rule must change on the bound game thread");
+ frame_rule_enabled=(int)on;
+ pushint(L,frame_rule_reads);
+ return 1;
 }
 
 static int route_active(lua_State *L){
@@ -250,14 +674,91 @@ static int route_active(lua_State *L){
    return luaerr(L,"The route must be installed on the bound game thread");
   uintptr_t lookup=(uintptr_t)toint(L,2,&valid);
   if(!valid)return luaerr(L,"Expected player lookup address");
+  if(!install_weapon_dispatch())return luaerr(L,"The weapon hit dispatcher does not match the supported build");
   install_player_lookup(L,lookup);
   route_enabled=1;
  }else{
   route_enabled=0;
+  frame_rule_enabled=0;
+  box_pawn=0;
   free(route_entries);route_entries=NULL;route_count=route_capacity=0;
   release_player_lookup();
  }
  return 0;
+}
+
+
+static void push_names(lua_State *L,const char *prefix,uintptr_t object,int levels){
+ char key[4];
+ for(int i=1;i<=levels && object && readable(object,0x28);i++){
+  key[0]=prefix[0];key[1]=(char)('0'+i);key[2]=0;key[3]=0;
+  pushint(L,*(unsigned int*)(object+0x18));setfield(L,-2,key);
+  key[2]='n';
+  pushint(L,*(unsigned int*)(object+0x1c));setfield(L,-2,key);
+  object=*(uintptr_t*)(object+0x20);
+ }
+}
+
+static int subject_observe(lua_State *L){
+ int valid=0;long long on=toint(L,1,&valid);
+ if(!valid || (on!=0 && on!=1))return luaerr(L,"Expected subject observation zero or one");
+ if(game_thread && GetCurrentThreadId()!=game_thread)
+  return luaerr(L,"Subject observation must run on the bound game thread");
+ if(on){
+  uintptr_t lookup=(uintptr_t)toint(L,2,&valid);
+  if(!valid)return luaerr(L,"Expected player lookup address");
+  install_player_lookup(L,lookup);
+  if(!subject_enabled)subject_reset();
+  subject_enabled=1;
+ }else{
+  subject_enabled=0;
+  subject_reset();
+  release_player_lookup();
+ }
+ return 0;
+}
+
+static int subject_next(lua_State *L){
+ if(GetCurrentThreadId()!=game_thread)return 0;
+ for(size_t n=0;n<subject_slots;n++){
+  SubjectEntry *e=&subject_entries[subject_cursor];
+  subject_cursor=(subject_cursor+1)%subject_slots;
+  if(!e->graph || !e->dirty)continue;
+  e->dirty=0;
+  newtable(L,0,26);
+  static const char *names[verdict_count]={"none","p1","p2","both","self1","self2"};
+  for(int v=0;v<verdict_count;v++){pushint(L,e->counts[v]);setfield(L,-2,names[v]);}
+  pushint(L,e->routed);setfield(L,-2,"routed");
+  pushint(L,e->depth);setfield(L,-2,"depth");
+  pushint(L,e->grabs[0]);setfield(L,-2,"grab1");
+  pushint(L,e->grabs[1]);setfield(L,-2,"grab2");
+  pushint(L,e->offsets[0]);setfield(L,-2,"slot1");
+  pushint(L,e->offsets[1]);setfield(L,-2,"slot2");
+  pushint(L,e->code);setfield(L,-2,"code");
+  pushint(L,(long long)e->graph);setfield(L,-2,"graph");
+  pushint(L,(long long)e->actor);setfield(L,-2,"actor");
+  push_names(L,"g",e->graph,4);
+  push_names(L,"a",e->actor,5);
+  if(e->actor && readable(e->actor,0x28))push_names(L,"c",*(uintptr_t*)(e->actor+0x10),1);
+  return 1;
+ }
+ return 0;
+}
+
+static int subject_grabs(lua_State *L){
+ int valid=0;
+ for(int i=0;i<2;i++){
+  long long value=toint(L,i+1,&valid);
+  if(!valid)return luaerr(L,"Expected two grabbed actor addresses");
+  subject_grab[i]=(uintptr_t)value;
+ }
+ return 0;
+}
+
+static int subject_stats(lua_State *L){
+ pushint(L,(long long)subject_count);
+ pushint(L,subject_dropped);
+ return 2;
 }
 
 /* Keep Helios in charge of the displayed view and isolate the hidden P2 view. */
@@ -720,21 +1221,31 @@ __declspec(dllexport) int luaopen_ln2_native(lua_State *L){
  game=(unsigned char*)GetModuleHandleW(NULL);
  if(!identity(runtime,UE4SS_TIMESTAMP,UE4SS_IMAGE_SIZE))return 0;
  #define API(name,variable) variable=(void*)(runtime+RVA_##name)
+ API(lua_gettop,gettop);
  API(lua_tointegerx,toint);API(lua_tonumberx,tonum);API(lua_pushboolean,pushbool);
  API(lua_pushinteger,pushint);API(lua_pushstring,pushstr);API(lua_pushcclosure,pushfn);
  API(lua_createtable,newtable);API(lua_setfield,setfield);API(luaL_error,luaerr);
  if(!identity(game,GAME_TIMESTAMP,GAME_IMAGE_SIZE))return luaerr(L,"Unsupported Little Nightmares II build");
  const unsigned char signature[]={0x40,0x53,0x48,0x83,0xec,0x40,0x0f,0x29,0x74,0x24,0x30};
  if(memcmp(game+0xae0510,signature,sizeof(signature))!=0)return luaerr(L,"Native crouch signature does not match");
- newtable(L,0,23);
+ newtable(L,0,27);
  field(L,"bind",bind_owner);field(L,"crouch",crouch);field(L,"use_item",use_item);
+ field(L,"six_crouch",six_crouch);
  field(L,"jump",jump);
  field(L,"vent",route_vent);
  field(L,"cage",route_cage);
  field(L,"route_actor",route_actor);
+ field(L,"route_frames",route_frames);
  field(L,"route_clear",route_clear);
  field(L,"route_active",route_active);
- field(L,"set_interacting",set_interacting);
+ field(L,"route_hit_reads",route_hit_reads);
+ field(L,"route_music_box",route_music_box);
+ field(L,"subject_observe",subject_observe);
+ field(L,"subject_next",subject_next);
+ field(L,"subject_stats",subject_stats);
+ field(L,"subject_grabs",subject_grabs);
+ field(L,"school_escort",school_escort);
+ field(L,"school_escort_reads",school_escort_reads);
  field(L,"shared_camera",shared_camera);
  field(L,"camera_tracks",camera_track);
  field(L,"split_camera_scan",split_camera_scan);
@@ -748,6 +1259,6 @@ __declspec(dllexport) int luaopen_ln2_native(lua_State *L){
  field(L,"menu_pointer",menu_pointer);
  field(L,"gamepad",read_gamepad);
  field(L,"heartbeat",heartbeat);field(L,"stop_heartbeat",stop_heartbeat);
- pushstr(L,"Helios original / guarded P2 adapter with XInput");setfield(L,-2,"version");
+ pushstr(L,"Helios original / guarded P2 adapter with event instigators, school escort and subject observation");setfield(L,-2,"version");
  return 1;
 }

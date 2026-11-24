@@ -48,4 +48,47 @@ pad.owner=1
 pad:update(.6,true,true,true)
 pad:update(.8,true,true,true)
 assert(not settings.bOffsetPlayerGamepadIds and not pad:input(), 'switching back restores P1 native input')
-print('PASS: gamepad ownership, neutral switch, analog inputs, reconnect and keyboard fallback.')
+
+local physical={[0]={x=0,buttons=0},[1]={x=0,buttons=0}}
+local dual=Pad.new(function(slot)
+ local device=physical[slot]
+ if device then return device.x,0,device.buttons,0,device.grab and 255 or 0,0,0 end
+end,function()return settings end,3,function()end)
+dual:update(10,true,false,true)
+dual:update(10.15,true,false,true)
+assert(dual.primarySlot==0 and not dual:input(),'a second device waits until the owned local controller is ready')
+dual:update(10.2,true,true,true)
+dual:update(10.35,true,true,true)
+assert(dual.primarySlot==0 and dual.secondSlot==1 and not settings.bOffsetPlayerGamepadIds)
+physical[0]={x=14000,buttons=0x1000,grab=true}
+physical[1]={x=-14000,buttons=0x2001}
+dual:update(10.45,true,true,true)
+assert(dual:forRole(1).x>0 and dual:forRole(1).jump and dual:forRole(1).grab)
+assert(dual:input().x<0 and not dual:input().jump and not dual:input().grab
+ and dual:input().gadget and dual:input().call,'both controllers keep their own movement and buttons')
+physical[1]=nil
+dual:update(10.6,true,true,true)
+assert(not dual:input() and dual.primarySlot==0 and dual:forRole(1).grab,
+ 'P2 can fall back to keyboard while P1 keeps holding the original input')
+
+physical[2]={x=0,buttons=0x1000}
+dual:update(11.2,true,true,true)
+assert(not dual:input() and dual.pendingRoute,'a reconnected pad cannot inject a held jump')
+physical[2].buttons=0
+dual:update(11.3,true,true,true)
+assert(not dual:input(),'wait for a neutral sample after reconnection')
+dual:update(11.5,true,true,true)
+assert(dual.secondSlot==2 and dual:input() and dual:forRole(1).grab,
+ 'a replacement P2 controller can connect while P1 remains in action')
+physical[1]={x=0,buttons=0}
+dual:update(11.8,true,true,true)
+assert(dual.secondSlot==2,'do not swap a working P2 pad when another one connects')
+physical[0]=nil
+dual:update(12,true,true,true)
+assert(not dual:forRole(1) and dual.secondSlot==2 and dual:input(),
+ 'when the P1 controller disconnects its partner keeps the same device')
+dual:update(12.1,true,false,true)
+assert(not dual:input(),'controller replacement drops raw P2 input immediately')
+dual:update(12.2,false,false,true)
+assert(not settings.bOffsetPlayerGamepadIds and not dual:input(),'leaving co-op restores the engine setting')
+print('PASS: single and dual gamepad ownership, independent inputs, neutral reassignment and keyboard fallback.')

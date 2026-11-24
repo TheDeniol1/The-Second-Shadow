@@ -139,7 +139,7 @@ function UI:createMarker(index)
  return {arrow=arrow,arrowSlot=arrowSlot,label=label,labelSlot=labelSlot}
 end
 
-function UI:showMarker(index,point,scale,calling,language)
+function UI:showMarker(index,point,scale,calling,language,rescue)
  self.markers=self.markers or {}
  local marker=self.markers[index]
  if not point then
@@ -150,10 +150,10 @@ function UI:showMarker(index,point,scale,calling,language)
   return
  end
  if not marker then marker=self:createMarker(index);self.markers[index]=marker end
- calling=not not calling
- if marker.calling~=calling or (calling and marker.language~=language) then
-  marker.label:SetText(FText(calling and Locale.text(language,'P%d llama',index) or 'P'..index))
-  marker.calling,marker.language=calling,language
+ local label=calling and Locale.text(language,rescue and 'P%d pide ayuda' or 'P%d llama',index) or 'P'..index
+ if marker.lastLabel~=label then
+  marker.label:SetText(FText(label))
+  marker.lastLabel=label
  end
  if marker.scale~=scale then
   marker.arrow:SetFont({FontObject=self.font,Size=math.floor(29*scale),TypefaceFontName=FName('None')})
@@ -169,7 +169,7 @@ function UI:showMarker(index,point,scale,calling,language)
  end
 end
 
-function UI:syncMarkers(pc,layout,w,h,first,second,calling,language)
+function UI:syncMarkers(pc,layout,w,h,first,second,calling,language,rescue)
  local scale=math.max(.7,math.min(w/1366,h/768))
  local view={left=0,top=0,right=w,bottom=h}
  if first and second then
@@ -214,7 +214,7 @@ function UI:syncMarkers(pc,layout,w,h,first,second,calling,language)
    y=math.max(view.top+34*scale,screen.Y-12*scale),dx=0,dy=1,angle=90}
  end
  self:showMarker(1,p1 or (calling==1 and callPoint(screen1)),scale,calling==1,language)
- self:showMarker(2,p2 or (calling==2 and callPoint(screen2)),scale,calling==2,language)
+ self:showMarker(2,p2 or (calling==2 and callPoint(screen2)),scale,calling==2,language,rescue)
  if seen1 and seen2 then
   if edge1 and edge2 then
    view.edge,view.firstLocation,view.secondLocation=math.max(edge1,edge2),at1,at2
@@ -288,7 +288,7 @@ function UI:sync(pc,state,preset,first,second)
   self.contentSlot:SetSize({X=w,Y=h})
   self.contentSize=size
  end
- local ok,view,lost,side=pcall(self.syncMarkers,self,pc,lib,w,h,first,second,state.call,state.language)
+ local ok,view,lost,side=pcall(self.syncMarkers,self,pc,lib,w,h,first,second,state.call,state.language,state.callRescue)
  if not ok then
   if self.markerError~=view then self.log('Flechas de camara: '..tostring(view)) end
   self:showMarker(1,nil,1);self:showMarker(2,nil,1)
@@ -309,7 +309,7 @@ function UI:sync(pc,state,preset,first,second)
  else
   local badge=state.showStatus and (state.rescueNotice or (tp.notice and tp.notice~='' and tp.notice) or state.status)or ''
   signature=table.concat({'badge',tostring(state.showStatus),tostring(state.enabled),badge,tp.flashFrame or '',
-   splitCall or '',splitCall and state.cameraMode or '',state.language or 'es',size},'|')
+   splitCall or '',splitCall and state.cameraMode or '',splitCall and tostring(state.callRescue) or '',state.language or 'es',size},'|')
  end
  if self.hidden or self.mouseMode~=state.menu then
   self.widget:SetVisibility(state.menu and 4 or 3)
@@ -376,7 +376,8 @@ function UI:sync(pc,state,preset,first,second)
   local color=markerColors[splitCall]
   hud:DrawRect({R=.022,G=.036,B=.047,A=.94},x,y,width,height)
   hud:DrawRect(color,x,y,2*scale,height)
-  hud:DrawText(Locale.text(state.language,'P%d te llama',splitCall),color,x+14*scale,y+3*scale,nil,.72*scale)
+  local message=state.callRescue and 'P%d pide ayuda' or 'P%d te llama'
+  hud:DrawText(Locale.text(state.language,message,splitCall),color,x+14*scale,y+3*scale,nil,.72*scale)
  end
  for class,list in pairs(rows)do
   for i=used[class]+1,#list do

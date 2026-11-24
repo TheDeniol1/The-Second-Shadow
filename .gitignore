@@ -10,3 +10,6 @@ preferences.ini
 backups/
 dist/
 tools/native-build/tcc/
+achievements.ini
+achievement_icons/
+online-diagnostico.txt

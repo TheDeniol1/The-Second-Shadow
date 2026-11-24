@@ -1,8 +1,8 @@
 -- Pure keyboard logic, also used by the regression tests.
 local M = {}
 M.presets = {
- {name="I J K L",left="J",right="L",up="I",down="K",jump="U",grab="O",sneak="P",sprint="RightShift",use="H",gadget="Y",call="M"},
- {name="Teclado numerico",left="NumPadFour",right="NumPadSix",up="NumPadEight",down="NumPadFive",jump="NumPadSeven",grab="NumPadNine",sneak="NumPadZero",sprint="Decimal",use="NumPadOne",gadget="NumPadTwo",call="NumPadThree"},
+ {name="I J K L",left="J",right="L",up="I",down="K",jump="U",grab="O",sneak="P",sprint="RightShift",use="H",gadget="Y",call="M",boost="F4"},
+ {name="Teclado numerico",left="NumPadFour",right="NumPadSix",up="NumPadEight",down="NumPadFive",jump="NumPadSeven",grab="NumPadNine",sneak="NumPadZero",sprint="Decimal",use="NumPadOne",gadget="NumPadTwo",call="NumPadThree",boost="F4"},
 }
 function M.sample(preset,down)
  return {x=(down(preset.right) and 1 or 0)-(down(preset.left) and 1 or 0),
