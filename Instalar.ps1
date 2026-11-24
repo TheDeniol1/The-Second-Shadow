@@ -8,7 +8,7 @@ $archivePath = (Resolve-Path -LiteralPath $RuntimeZip).Path
 $win64 = Join-Path $root 'Helios\Binaries\Win64'
 $exe = Join-Path $win64 'Little Nightmares II.exe'
 if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Selecciona la raiz de la edicion original del juego.' }
-if ((Get-FileHash -LiteralPath $exe).Hash -ne '2920C17031003A713EB1B6FC4057C28AE98FDE5900EBC6FF93E488DBF11BD1C9') { throw 'Ejecutable incompatible con esta alpha.' }
+if ((Get-FileHash -LiteralPath $exe).Hash -ne '2920C17031003A713EB1B6FC4057C28AE98FDE5900EBC6FF93E488DBF11BD1C9') { throw 'Ejecutable incompatible con esta version del mod.' }
 if ((Get-FileHash -LiteralPath $archivePath).Hash -ne '580A244BC30352CFD0D0019C4C63726C2BDDD5BB04EF91F985DF237AA81B06E9') { throw 'ZIP de UE4SS incompatible. Consulta INSTALACION.md.' }
 foreach ($name in @('ue4ss','dwmapi.dll','UE4SS.dll','Mods','xinput1_3.dll')) {
     if (Test-Path -LiteralPath (Join-Path $win64 $name)) { throw "Ya existe $name. Este instalador solo acepta una instalacion limpia y no reemplaza mods ni preferencias." }
@@ -18,7 +18,7 @@ $source = Join-Path $PSScriptRoot 'Helios\Binaries\Win64\ue4ss\Mods\LN2LocalCoop
 if (-not (Test-Path -LiteralPath $source)) { $source = Join-Path $PSScriptRoot 'mods\LN2LocalCoop' }
 $defaults = Join-Path $PSScriptRoot 'configuracion\preferences-default.ini'
 if (-not (Test-Path -LiteralPath $defaults -PathType Leaf)) { throw 'Falta configuracion/preferences-default.ini.' }
-foreach ($required in @((Join-Path $source 'scripts\main.lua'),(Join-Path $source 'scripts\ln2_native_21.dll'),(Join-Path $PSScriptRoot 'configuracion\UE4SS-settings.ini'),(Join-Path $PSScriptRoot 'configuracion\mods.txt'))) {
+foreach ($required in @((Join-Path $source 'scripts\main.lua'),(Join-Path $source 'scripts\ln2_native_29.dll'),(Join-Path $PSScriptRoot 'configuracion\UE4SS-settings.ini'),(Join-Path $PSScriptRoot 'configuracion\mods.txt'))) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Paquete incompleto: $required" }
 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem

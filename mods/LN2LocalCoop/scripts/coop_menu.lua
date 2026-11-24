@@ -1,4 +1,4 @@
-local M={name='The Second Shadow',version='v0.7.0 Alpha'}
+local M={name='The Second Shadow',version='v0.8.0 Alpha'}
 local Bindings=require('coop_bindings')
 local Locale=require('coop_locale')
 local white={R=1,G=1,B=1,A=1}
@@ -58,9 +58,15 @@ function M.draw(hud,w,h,state,preset,font)
   option('1','Local',145)
   text(state.enabled and 'Cooperativo activo. Pulsa 1 para retirar al jugador 2.' or
    'Pulsa 1 para invitar al jugador 2.',44,184,.78,faded)
-  text('[2] En línea',0,260,.95,faded)
-  text('En desarrollo',44,298,.78,faded)
+  local online=state.online
+  option('2',online and online:tr('En línea') or 'En línea',260,not online)
+  text(online and online:tr('Juega con un amigo de Steam (en pruebas).') or 'En desarrollo',44,298,.78,faded)
   footer()
+  return
+ end
+ if state.menuPage=='online' and state.online then
+  state.online:draw({text=function(t,dx,dy,size,dim)text(t,dx,dy,size,dim and faded or white)end,
+   option=option,footer=footer})
   return
  end
  if state.menuPage=='camera' then
@@ -95,9 +101,10 @@ function M.draw(hud,w,h,state,preset,font)
   text(tr('[2] Rescate aéreo (experimental): %s',yes(state.airRescue)),0,225,1)
   text('Permite atrapar al compañero mientras cae.',24,262,.76,faded)
   text(tr('[3] Ayuda de salto de compañero (experimental): %s',yes(state.jumpAssist)),0,325,.95)
-  text('Agáchate y pulsa ayuda. Tu compañero pulsa agarre.',24,362,.76,faded)
+  local boostKey=state.controls and state.controls.bindings.boost or 'F4'
+  text(tr('P1 F3 · P2 %s · El compañero pulsa agarre.',pretty(boostKey)),24,362,.76,faded)
   text(tr('[4] Eventos de P2 (experimental): %s',yes(state.eventRedirect)),0,425,.95)
-  text('Enruta los eventos y la IA al jugador más cercano.',24,462,.76,faded)
+  text('Los eventos compatibles siguen a quien los activa.',24,462,.76,faded)
   if not state.sixLocked then target('Five',500,63) end
   text(tr('[5] Jugar como Six: %s',yes(state.playAsSix)),0,505,.95,state.sixLocked and faded or white)
   local detail='Acompaña a Mono como Six.'
@@ -135,22 +142,28 @@ function M.draw(hud,w,h,state,preset,font)
  if state.menuPage=='gamepad' then
   local pad=state.gamepad
   text('Asignar mando',0,74,1.25)
-  highlight(pad.owner==1 and 146 or 201,42)
+  highlight(146+(pad.owner-1)*55,42)
   target('One',146,42)
   target('Two',201,42)
+  target('Three',256,42)
   text('[1] Jugador 1',0,150,1)
   text('[2] Jugador 2',0,205,1)
+  text('[3] Dos mandos',0,260,1)
+  local hint='Mando conectado.'
   if not pad.read then
-   text('No se puede usar el mando en este momento.',0,285,.8,faded)
+   hint='No se puede usar el mando en este momento.'
   elseif pad.slot==nil then
-   text('No se detecta ningún mando. Comprueba la conexión.',0,285,.8,faded)
-  elseif pad.owner==2 and not state.enabled then
-   text('Mando conectado. Activa al jugador 2 con F7.',0,285,.8,faded)
-  elseif state.enabled and pad.routed~=(pad.owner==2) then
-   text('Suelta los botones del mando para aplicar el cambio.',0,285,.8,faded)
-  else
-   text('Mando conectado.',0,285,.8,faded)
+   hint='No se detecta ningún mando. Comprueba la conexión.'
+  elseif pad.owner~=1 and not state.enabled then
+   hint='Mando conectado. Activa al jugador 2 con F7.'
+  elseif state.enabled and pad.pendingRoute then
+   hint='Suelta los botones del mando para aplicar el cambio.'
+  elseif pad.owner==3 then
+   if pad.primarySlot and pad.secondSlot then hint='Un mando para cada jugador.'
+   elseif pad.secondSlot then hint='P1 usa el teclado. P2 tiene mando.'
+   elseif pad.primarySlot then hint='P1 tiene mando. P2 usa el teclado.' end
   end
+  text(hint,0,319,.8,faded)
   text('Jugador 2: palanca izquierda para moverse y escalar.',0,350,.78)
   text('A  saltar     RT  agarrar     LT  agacharse',0,388,.76,faded)
   text('X  correr    Y  usar o lanzar    B  linterna / control remoto',0,420,.76,faded)
@@ -184,10 +197,10 @@ function M.draw(hud,w,h,state,preset,font)
   text('Controles del jugador 2',0,74,1.25)
   for i,action in ipairs(Bindings.actions)do
    local selected=i==controls.selected
-   local dy=145+(i-1)*35
+   local dy=145+(i-1)*31
    local value=controls.capture==action.id and '[ ... ]' or ('[ '..pretty(controls.bindings[action.id])..' ]')
-   if selected then highlight(dy-1,33) end
-   target(i,dy-1,33)
+   if selected then highlight(dy-1,30) end
+   target(i,dy-1,30)
    text(action.label,0,dy,.85)
    text(value,425,dy,.85,selected and white or faded)
   end
@@ -203,7 +216,8 @@ function M.draw(hud,w,h,state,preset,font)
  option('4','Extras',280)
  option('5','Teclado del jugador 2',325)
  option('6','Opciones de teletransporte',370)
- option('7',tr('Mando para el jugador %d',state.gamepad and state.gamepad.owner or 1),415)
+ local padOwner=state.gamepad and state.gamepad.owner or 1
+ option('7',padOwner==3 and 'Dos mandos' or tr('Mando para el jugador %d',padOwner),415)
  option('8',tr('Separación peligrosa: %s',yes(state.separation.enabled)),460)
  rect(line,0,508,584,1)
  text(state.status,0,520,.8,state.enabled and white or faded)

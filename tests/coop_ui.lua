@@ -118,6 +118,10 @@ state.language='en'
 ui:sync(pc,state,preset)
 assert(visibleText('P2 is calling you'),'split captions update when the language changes')
 state.language='es'
+state.callRescue=true
+ui:sync(pc,state,preset)
+assert(visibleText('P2 pide ayuda').position.Y<384,'a rescue request appears for P1 while P2 is hanging')
+state.callRescue=nil
 state.call=nil
 ui:sync(pc,state,preset)
 assert(rootWrites==previousRootWrites+3,'expired call hides the split HUD when the status badge is disabled')

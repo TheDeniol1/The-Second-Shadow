@@ -60,7 +60,9 @@ end
 
 local p1={Pawn={}}
 local p2={Player={ControllerId=1}}
-local pawn={Mesh=component,Controller=p2,GetWorld=function()return world end}
+local chapter='School'
+local pawn={Mesh=component,Controller=p2,GetWorld=function()return world end,
+ GetFullName=function()return '/Game/Levels/'..chapter..'/PLVL_'..chapter..'.BP_PlayerPawn_C'end}
 p2.Pawn=pawn
 local appearance=Six.new(function(value)return value~=nil and not value.destroyed end,
  function(a,b)return a~=nil and a==b end,function()end)
@@ -91,17 +93,31 @@ companion.Mesh=nil;className='BP_SixPawn_WithCoat_C'
 assert(appearance:sync(p2,pawn,p1) and visual.SkeletalMesh==raincoat,'the coat class covers a muxed or temporarily unavailable mesh')
 companion.bHidden=true
 assert(appearance:sync(p2,pawn,p1) and visual.SkeletalMesh==raincoat,'a single missed sample leaves the current look')
-assert(appearance:sync(p2,pawn,p1) and visual.SkeletalMesh==jumper and visual.materials[0]==shadow,
- 'sustained absence returns P2 to Dark Six')
+assert(appearance:sync(p2,pawn,p1) and visual.SkeletalMesh==raincoat and visual.materials[0]==shadow,
+ 'sustained absence returns P2 to Dark Six with the last visible outfit')
 assert(appearance:sync(p2,pawn,p1) and spawns==1,'sync keeps the existing visual actor')
 appearance:restore()
 assert(actor.destroyed and component.bVisible and component.VisibilityBasedAnimTickOption==1,
  'cleanup removes the visual actor and restores the original renderer')
+
+assert(appearance:sync(p2,pawn,p1,true) and actor.SkeletalMeshComponent.SkeletalMesh==raincoat,
+ 'passing native control between Six and the shadow preserves the wardrobe')
+appearance:restore()
+companion=nil;chapter='Transmission';appearance:resetWardrobe()
+local direct=Six.new(appearance.live,appearance.same,function()end)
+assert(direct:sync(p2,pawn,p1,true) and actor.SkeletalMeshComponent.SkeletalMesh==raincoat
+ and actor.SkeletalMeshComponent.materials[0]==shadow,'a direct load into Transmission selects the dark raincoat')
+chapter='Wilderness';direct:resetWardrobe()
+assert(direct:sync(p2,pawn,p1,true) and actor.SkeletalMeshComponent.SkeletalMesh==jumper
+ and actor.SkeletalMeshComponent.materials[0]==shadow,'an earlier checkpoint restores the jumper silhouette')
+direct:restore()
+chapter='School'
+local beforeFailure=spawns
 jumper.Skeleton={}
-assert(not appearance:sync(p2,pawn,p1) and spawns==1,'incompatible skeleton does not create a visual actor')
+assert(not appearance:sync(p2,pawn,p1) and spawns==beforeFailure,'incompatible skeleton does not create a visual actor')
 jumper.Skeleton=skeleton
 failAttach=true
 assert(not appearance:sync(p2,pawn,p1) and actor.destroyed and component.bVisible,'failed attachment rolls back to Mono')
-assert(not appearance:sync(p2,pawn,p1) and spawns==2,'failed attachment is not retried for the same pawn')
+assert(not appearance:sync(p2,pawn,p1) and spawns==beforeFailure+1,'failed attachment is not retried for the same pawn')
 StaticFindObject,FName=previousFind,previousFName
-print('PASS: Six visual attachment, story outfits, Dark Six fallback, visibility and rollback.')
+print('PASS: Six visual attachment, Dark Six wardrobe through handoff, direct chapter load, visibility and rollback.')

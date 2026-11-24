@@ -12,7 +12,14 @@ end
 function S:invalidate(first)
  if not self.enabled or self.pending then return end
  self.pending={first=self.primary or first}
+ if self.api.invalidate then self.api.invalidate() end
  self.api.cleanup();self.phase='waiting';self.stableAt=nil;self.replay=true;self.plan=nil
+end
+function S:confirmReload(first)
+ if self.pending and not self.pending.confirmed and self.api.same(first,self.pending.first) then
+  self.pending.confirmed=true
+  return true
+ end
 end
 function S:observe(first)
  if self.pending and self.api.live(first)and not self.api.alive(first)then self.pending.sawDeath=true end
@@ -26,15 +33,20 @@ function S:update(first,ready,paused,intent,now)
  local api=self.api
  self:observe(first)
  if not api.live(first)then self.stableAt=nil;return false end
+ local resumed
  if self.pending then
   if not api.alive(first)then self.pending.sawDeath=true;return false end
-  if self.pending.first and api.same(first,self.pending.first)and not self.pending.sawDeath then return false end
+  if self.pending.first and api.same(first,self.pending.first)
+   and not (self.pending.confirmed or self.pending.sawDeath) then return false end
   self.pending=nil
+  resumed=true
  end
  if not api.same(first,self.primary)then
   if self.primary then api.cleanup();self.replay=true end
   self.primary=first;self.phase='waiting';self.stableAt=nil;self.plan=nil
   if api.born then api.born(first)end
+ elseif resumed and api.born then
+  api.born(first)
  end
  if not ready or not api.alive(first)then self.stableAt=nil;return false end
  if paused then return false end
@@ -76,6 +88,9 @@ function S:status()
  if self.phase=='sleeping'then return 'Jugador 2: pulsa una de tus teclas para levantarte'end
  if self.phase=='intro_wait'then return 'El jugador 2 está a punto de aparecer'end
  if self.phase=='waking'then return 'El jugador 2 se está levantando'end
+ if self.phase=='waiting' and self.api.waitingForRoom and self.api.waitingForRoom() then
+  return 'P1: busca suelo libre para el jugador 2'
+ end
  return 'Cargando el punto de control'
 end
 return S

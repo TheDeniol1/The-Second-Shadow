@@ -1,8 +1,8 @@
 local Call={}
 Call.__index=Call
 
-function Call.new(live,same,log)
- return setmetatable({live=live,same=same,log=log,seen={}},Call)
+function Call.new(live,same,log,canRequestRescue)
+ return setmetatable({live=live,same=same,log=log,seen={},canRequestRescue=canRequestRescue},Call)
 end
 
 function Call:gesture(pawn)
@@ -26,14 +26,19 @@ end
 function Call:input(pawn,pressed)
  local gesture=self:gesture(pawn)
  if self.owned and (not pressed or not self.same(self.owned,gesture)) then self:release() end
- if pressed and not self.pressed and self.live(gesture)
-  and not gesture.mGestureData.mIsGesturing and self:invoke(gesture,true) then
-  self.owned=gesture
+ if pressed and not self.pressed then
+  if self.live(pawn) and self.canRequestRescue and self.canRequestRescue(pawn) then
+   self.rescue=pawn
+  elseif self.live(gesture) and not gesture.mGestureData.mIsGesturing and self:invoke(gesture,true) then
+   self.owned=gesture
+  end
  end
  self.pressed=not not pressed
 end
 
 function Call:observe(first,second)
+ local rescue=self.rescue
+ self.rescue=nil
  if not first or not second then self:release();self.seen[1],self.seen[2]=nil,nil;return end
  local role
  for index,pawn in ipairs({first,second}) do
@@ -46,7 +51,8 @@ function Call:observe(first,second)
    self.seen[index]=nil
   end
  end
- return role
+ if self.live(rescue) and self.same(rescue,second) then return 2,true end
+ return role,false
 end
 
 return Call

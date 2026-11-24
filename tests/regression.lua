@@ -504,6 +504,419 @@ p2.Mesh={valid=true,GetAnimInstance=function()return {valid=true}end}
 check(adapter:ready(pc),'initialized native pawn can pass readiness gate')
 nativeMode=4;check(not adapter:ready(pc),'menu/loading state cannot spawn P2')
 print('PASS: deferred introduction, reused-pawn reload, hidden-pawn physics and session preservation.')
+local tower={valid=true}
+local bridgePawn={valid=true,GetWorld=function()return tower end,
+ GetFullName=function()return 'BP_PlayerPawn_C /Game/Levels/Transmission/PLVL_Transmission.PLVL_Transmission:PersistentLevel.Pawn'end}
+local signal,overriding='ANIM_Player_StumbleFallLongTransmission',true
+bridgePawn.mAnimationControlComponent={valid=true,IsPlayingOverrideAnimation=function()return overriding end,
+ mCurrentAnimStateAsset={valid=true,GetFullName=function()return 'AnimSequence /Game/Characters/Player/Animations/'..signal..'.'..signal end}}
+local bridgePC={valid=true,Pawn=bridgePawn}
+nativeMode=5
+check(not adapter:sixFinale(bridgePC,true),'loading the bridge in two-Mono mode does not end co-op')
+settings.playAsSix=true
+local solo,finalHit=adapter:sixFinale(bridgePC,true)
+check(solo and not finalHit,'loading the final bridge ends the Dark Six session without playing a disappearance')
+overriding=false
+check(adapter:sixFinale(bridgePC,true),'the bridge remains solo after the override, including a manual activation')
+nativeMode=4
+check(not adapter:sixFinale(bridgePC,false),'the main menu clears the ending for another save')
+nativeMode=5
+check(not adapter:sixFinale(bridgePC,true),'an inactive override does not identify the ending')
+signal,overriding='ANIM_Player_WakeUpAfterLastHitMusicBox',true
+solo,finalHit=adapter:sixFinale(bridgePC,true)
+check(solo and finalHit,'the last hit produces the disappearance cue')
+solo,finalHit=adapter:sixFinale(bridgePC,true)
+check(solo and not finalHit,'the last-hit effect plays once across repeated game polls')
+signal='ANIM_Player_HittingMusicBoxRecoil'
+check(not adapter:sixFinale(bridgePC,true),'an earlier music box checkpoint in the same world can restore co-op')
+print('PASS: Dark Six finale, direct bridge loads, and re-entry before the last hit.')
+local Bridge=require('final_bridge')
+local bridgeTime,restarts,placements=0,0,0
+local ground,room,playingSix=true,true,false
+local bridgePosition={X=-799.15,Y=11409.17,Z=28792.25}
+bridgePawn.GetActorLocation=function()return bridgePosition end
+bridgePawn.K2_GetActorLocation=bridgePawn.GetActorLocation
+bridgePawn.IsAlive=function()return true end
+bridgePawn.CharacterMovement={valid=true,MovementMode=1,
+ K2_FindFloor=function(_,_,floor)floor.bBlockingHit=ground;floor.bWalkableFloor=ground;floor.FloorDist=8 end}
+local newMono={valid=true,alive=true,CapsuleComponent={valid=true},
+ IsAlive=function(self)return self.alive end,
+ K2_SetActorLocation=function(_,at)placements=placements+1;check(at.Y==bridgePosition.Y-70,'placement follows the verified bridge lane');return true end}
+local localPlayer={valid=true}
+local bridge=Bridge.new({live=live,same=function(a,b)return a==b and live(a)end,
+ log=function()end,playAsSix=function()return playingSix end,clock=function()return bridgeTime end,
+ clear=function()return room end,restartLocal=function()restarts=restarts+1 end})
+playingSix=true
+check(bridge:prepare(localPlayer,newMono,bridgePC)==nil,'Dark Six uses the separate finale path')
+playingSix=false;ground=false
+check(bridge:prepare(localPlayer,newMono,bridgePC)==false and placements==0,'missing floor delays P2 birth')
+bridgeTime=.3;ground=true;room=false
+check(bridge:prepare(localPlayer,newMono,bridgePC)==false and placements==0,'occupied capsule delays P2 birth')
+bridgeTime=.6;room=true
+check(bridge:prepare(localPlayer,newMono,bridgePC)==false and placements==1,'verified placement waits for the pawn to survive initialization')
+newMono.alive=false;bridgeTime=.7
+check(bridge:prepare(localPlayer,newMono,bridgePC)==false and restarts==1,'a failed birth restarts just the local pawn')
+bridgeTime=1
+check(bridge:prepare(localPlayer,newMono,bridgePC)==false and restarts==1,'failed births cannot loop through checkpoint reloads')
+newMono.alive=true;bridgeTime=1.3
+check(bridge:prepare(localPlayer,newMono,bridgePC)==false and placements==2,'a recovered pawn is checked again')
+bridgeTime=1.6
+check(bridge:prepare(localPlayer,newMono,bridgePC)==true,'a stable pawn joins with no default offset')
+bridge:reset();bridgePosition={X=-799,Y=8280,Z=28200}
+check(bridge:prepare(localPlayer,newMono,bridgePC)==nil,'the earlier collapse retains normal joining')
+print('PASS: final bridge floor and capsule checks, stable handoff and bounded local recovery.')
+do
+ local now,moves,restarts=0,0,0
+ local clear=true
+ local canMove=true
+ local support='none'
+ local function findFloor(_,point,floor)
+  floor.bBlockingHit=(support=='left' and point.Y<-75) or (support=='native' and point.X>200)
+  floor.bWalkableFloor=floor.bBlockingHit
+  floor.FloorDist=point.Z-100
+ end
+ local function mono(x,y,z)
+  local p={valid=true,alive=true,at={X=x,Y=y,Z=z}}
+  p.K2_GetActorLocation=function(self)return self.at end
+  p.K2_SetActorLocation=function(self,at)
+   if not canMove then return false end
+   self.at=at;moves=moves+1;return true
+  end
+  p.IsAlive=function(self)return self.alive end
+  p.CapsuleComponent={valid=true,GetScaledCapsuleRadius=function()return 32 end}
+  p.CharacterMovement={valid=true,K2_FindFloor=findFloor}
+  return p
+ end
+ local first,second=mono(0,0,100),mono(0,100,100)
+ local firstPC={Pawn=first,PlayerCameraManager={valid=true,GetCameraRotation=function()return {Yaw=0}end}}
+ local secondPC={valid=true}
+ local bridge=Bridge.new({clear=function()return clear end})
+ local function instance()
+  return SpawnNative.new({live=live,same=function(a,b)return a~=nil and a==b end,
+   world=function(a,b)return a==first and live(b)end,clock=function()return now end,log=function()end,
+   clear=function()return clear end,landing=function(...)return bridge:destination(...)end,
+   restartLocal=function(pc,q,p,at)
+    check(pc==secondPC and not q.alive and p==firstPC and at.Y<0,'only the dead local pawn restarts at verified ground')
+    restarts=restarts+1;return true
+   end})
+ end
+ local join=instance()
+ check(not join:prepareJoin(secondPC,second,firstPC) and moves==0,'an open offset without floor is rejected')
+ support='left';clear=false;now=.3
+ check(not join:prepareJoin(secondPC,second,firstPC) and moves==0,'a wall between players is also rejected')
+ clear=true;canMove=false;now=.6
+ check(not join:prepareJoin(secondPC,second,firstPC) and moves==0,'a native placement failure is retried without taking control')
+ canMove=true;now=.9
+ check(not join:prepareJoin(secondPC,second,firstPC) and moves==1 and second.at.Y==-100,
+  'search the other side of P1 when the preferred side has no floor')
+ now=1.05;check(not join:prepareJoin(secondPC,second,firstPC),'check the placed pawn before enabling input')
+ now=1.2;check(join:prepareJoin(secondPC,second,firstPC) and moves==1,'a stable landing keeps its placement')
+
+ support='native';second=mono(225,0,104);join=instance()
+ check(not join:prepareJoin(secondPC,second,firstPC) and moves==1,'a supported native spawn can stay in place')
+ now=1.5;check(join:prepareJoin(secondPC,second,firstPC) and moves==1,'the native slot becomes playable without a move')
+
+ support='left';second.alive=false;join=instance()
+ check(not join:prepareJoin(secondPC,second,firstPC) and restarts==1,'a failed birth restarts only P2')
+ now=2
+ check(not join:prepareJoin(secondPC,second,firstPC) and restarts==1,'the same failed birth cannot repeat the restart')
+ second=mono(0,0,100)
+ check(not join:prepareJoin(secondPC,second,firstPC),'a replacement pawn gets its own landing verification')
+ now=2.3;check(not join:prepareJoin(secondPC,second,firstPC) and second.at.Y==-100,'place the replacement on support')
+ now=2.6;check(join:prepareJoin(secondPC,second,firstPC),'the replacement returns to play')
+end
+print('PASS: P2 placement finds a supported side, preserves safe engine starts and recovers only the local pawn.')
+local Finale=require('finale_scene')
+local betrayal='ANIM_Player_GapHelpSixBetrayal'
+local parked,stopped,pulled,shown,dissolved=0,0,0,0,0
+local reactions,releasedReaction,rescueReactions=0,0,0
+local dissolveProgress
+local reaction={valid=true}
+local rescueFrames,releasedCameras=0,0
+local main=bridgePawn
+local partner={valid=true,alive=true,position={X=-809,Y=14026,Z=29050},
+ K2_GetActorLocation=function(self)return self.position end,IsAlive=function(self)return self.alive end}
+main.IsAlive=partner.IsAlive
+main.alive=true
+local scene=Finale.new({live=live,same=function(a,b)return a==b and live(a)end,log=function()end,
+ animation=function(p)return p.animation end,pull=function(p)check(p==partner,'rescue belongs to P2');pulled=pulled+1;return 1.3 end,
+ frameRescue=function(p)check(p==partner,'rescue camera belongs to P2');rescueFrames=rescueFrames+1 end,
+ releaseCamera=function()releasedCameras=releasedCameras+1 end,
+ reactPartner=function(caught,companion,role)
+  if role==1 then
+   check(caught==partner and companion==main,'P1 reaches toward P2 when Six catches P2 first')
+   rescueReactions=rescueReactions+1
+  else
+   check(caught==main and companion==partner,'P2 reaches toward P1 when Six catches P1 first')
+   reactions=reactions+1
+  end
+  return reaction
+ end,
+ stopReaction=function(q,clip)
+  check(q==(releasedReaction==0 and main or partner) and clip==reaction,'only release the route-owned pose')
+  releasedReaction=releasedReaction+1
+ end,
+ parkSecond=function()parked=parked+1 end,stopSecond=function()stopped=stopped+1 end,
+ chair=function(p)return p.seated end,shadow=function(p)check(p==main,'shadow follows the primary Mono');shown=shown+1 end,
+ beginDissolve=function()dissolved=dissolved+1 end,
+ dissolve=function(progress)dissolveProgress=progress end,clearShadow=function()end})
+local function finaleTick(now,paused)
+ return scene:update(main,partner,now,true,true,paused)
+end
+partner.animation=betrayal
+bridgePosition={X=-821,Y=13500,Z=28900}
+check(finaleTick(1)=='hold'and pulled==1 and rescueReactions==1,'P2 reaching Six first starts one rescue and P1 reacts')
+main.alive=false;main.animation=betrayal
+check(finaleTick(2)=='hold'and pulled==1,'P1 death and subsequent catch cannot interrupt the P2 rescue')
+check(finaleTick(5,true)=='hold','a paused finale cannot advance')
+check(finaleTick(4)=='restart'and not scene.route,'P2 route requests a shared restart after the rescue')
+check(rescueFrames==2 and releasedCameras==1 and releasedReaction==1,'the P2 shot and P1 pose release before restart')
+bridgePosition={X=-809,Y=14026,Z=29050}
+main.alive=true;main.animation=nil;partner.alive=false;partner.animation=nil
+check(finaleTick(6)=='grace','P2 falling just before the native catch gets a short grace period')
+main.animation=betrayal
+check(finaleTick(6.25)=='hold'and stopped==1 and reactions==1,'P1 reaching Six starts the P2 reaction once')
+main.alive=false
+check(finaleTick(8)=='hold'and parked==1 and shown==0 and releasedReaction==2,'clear the reaction before parking, then wait for the native fall')
+partner.valid=false;main.animation=nil;main.alive=true
+bridgePosition={X=500,Y=2000,Z=1000}
+check(finaleTick(15)=='hold'and shown==1,'the native transition replaces playable P2 with a shadow')
+main.seated=true
+check(finaleTick(16)=='hold'and dissolved==1 and dissolveProgress==0,'the chair cue starts the effect once')
+check(finaleTick(16.8,true)=='hold'and dissolveProgress==0,'pause retains the dissolving shadow')
+check(finaleTick(16.3)=='hold'and dissolveProgress>0 and dissolveProgress<1,'the shadow dissolves over the last moment')
+check(finaleTick(17)=='hold'and dissolved==1 and shown==1 and dissolveProgress==1,
+ 'the shadow is never recreated after the chair cue')
+bridgePosition={X=-799,Y=11330,Z=28813}
+check(not finaleTick(18)and not scene.route,'reloading the bridge clears the finale')
+print('PASS: native catch ordering, P2 rescue and reaction, P1 fall, epilogue shadow and one-time dissipation.')
+do
+ local Native=require('finale_native')
+ local position={X=20,Y=50,Z=5}
+ local rotation={Pitch=0,Yaw=25,Roll=0}
+ local visual={valid=true,K2_GetActorLocation=function()return position end,K2_GetActorRotation=function()return rotation end}
+ local emitter={valid=true}
+ local count=0
+ local instance=Native.new({live=live,UE={GetGameplayStatics=function()return {SpawnEmitterAtLocation=function(_,context,asset,at,facing)
+  check(context==visual and asset==emitter and at==position and facing==rotation,'disappearance uses the existing Dark Six appearance')
+  count=count+1
+ end}end}})
+ instance.asset=function()return emitter end
+ instance:dissolveAt(visual)
+ check(count==1 and visual.valid,'emitter leaves retirement to the normal co-op lifecycle')
+ local scale,soundStarts,soundStops=nil,0,0
+ local beforeFind=StaticFindObject
+ StaticFindObject=function(path)
+  check(path=='/Script/AkAudio.Default__AkGameplayStatics','the cue uses the existing positional audio API')
+  return {valid=true,
+   PostEventAtLocation=function(_,sound,at,_,_,context)
+    check(sound==emitter and at==position and context.valid,'the static starts at the shadow position')
+    soundStarts=soundStarts+1;return 27
+   end,
+   ExecuteActionOnPlayingID=function(_,action,id)
+    check(action==0 and id==27,'cleanup stops only the finale sound');soundStops=soundStops+1
+   end}
+ end
+ visual.GetActorScale3D=function()return {X=2,Y=2,Z=2}end
+ visual.SetActorScale3D=function(_,value)scale=value end
+ visual.K2_DestroyActor=function(self)self.valid=false end
+ local seated={valid=true}
+ instance.c.world=function(a,b)return a==visual and b==seated end
+ instance.shadowActor=visual
+ instance:beginDissolve(seated)
+ instance:dissolve(.5)
+ check(soundStarts==1 and scale.X>0 and scale.X<2 and visual.valid,'sound and the still-visible silhouette overlap')
+ instance:dissolve(1)
+ check(soundStops==1 and not visual.valid and not instance.shadowActor,'the finished effect cleans up its own resources')
+ visual.valid=true
+ instance.shadowActor=visual
+ instance:beginDissolve(seated)
+ instance:clearShadow()
+ check(soundStops==2 and not visual.valid and not instance.departureScale,'interrupted departure also clears the silhouette and sound')
+ StaticFindObject=beforeFind
+ local calls={}
+ local first={K2_GetActorLocation=function()return position end}
+ local secondAt={X=150,Y=0,Z=50}
+ local second={IsAlive=function()return true end,K2_GetActorLocation=function()return secondAt end}
+ instance.c.world=function(q,p)return q==second and p==first end
+ instance.c.playPose=function(q,name,at)
+  check(q==second and at==position,'the reaction faces the caught partner')
+  calls[#calls+1]=name
+  if name=='ANIM_Player_HandHoldOpenHandIdle' then return name end
+ end
+ check(instance:reactToBetrayal(first,second)=='ANIM_Player_HandHoldOpenHandIdle' and #calls==2,
+  'a non-replayable primary gesture falls back to an independent reaching pose')
+ secondAt.X=1200
+ check(not instance:reactToBetrayal(first,second) and #calls==2,'P2 outside the bridge shot keeps its own pose')
+end
+do
+ local Native=require('finale_native')
+ local cameraWorld,cameraClass={valid=true},{valid=true}
+ local original,other={valid=true},{valid=true}
+ local camera,viewpoint,fieldOfView
+ local player={valid=true,PlayerCameraManager={valid=true,GetCameraLocation=function()return {X=-1400}end}}
+ player.GetWorld=function()return cameraWorld end
+ player.GetViewTarget=function()return viewpoint end
+ player.SetViewTargetWithBlend=function(_,target)viewpoint=target end
+ function cameraWorld:SpawnActor(class,position,rotation)
+  check(class==cameraClass and position.X<partner.position.X,'shot uses the native camera side')
+  camera={valid=true,CameraComponent={SetFieldOfView=function(_,value)fieldOfView=value end},
+   K2_DestroyActor=function(self)self.valid=false end}
+  return camera
+ end
+ local previousFind=StaticFindObject
+ StaticFindObject=function(path)
+  check(path=='/Script/Engine.CameraActor','rescue spawns only a camera actor')
+  return cameraClass
+ end
+ partner.valid=true
+ local adapter=Native.new({live=live,same=function(a,b)return a==b and live(a)end,
+  world=function(_,b)return live(b)end,log=function()end,p1=function()return player end,driver={},
+  UE={GetKismetMathLibrary=function()return {FindLookAtRotation=function()return {}end}end}})
+ viewpoint=original
+ adapter:frameRescue(partner)
+ check(viewpoint==camera and fieldOfView==49,'P1 sees the P2 rescue shot at full width')
+ viewpoint=other
+ adapter:frameRescue(partner)
+ check(viewpoint==camera,'native fall camera cannot take the shot before the rescue ends')
+ adapter:releaseCamera()
+ check(viewpoint==original and not camera.valid,'cleanup restores the original target and destroys the temporary camera')
+ StaticFindObject=previousFind
+end
+do
+ local Native=require('finale_native')
+ local at={X=-809,Y=14010,Z=29065}
+ local pawn={valid=true,CharacterMovement={MovementMode=1},K2_GetActorLocation=function()return at end}
+ local adapter=Native.new({same=function(a,b)return a==b end,log=function()end})
+ local fallback=0
+ adapter.lift.begin=function(_,lift)check(lift.startedAt==1,'fallback starts at the current clip time');fallback=fallback+1 end
+ local function attempt()
+  return {pawn=pawn,origin={X=-809,Y=14010,Z=29065},startedAt=0,deadline=.85,latest=1.6,lift={}}
+ end
+ adapter.monoClimb=attempt()
+ at={X=-809,Y=14065,Z=29115}
+ adapter:updateMonoClimb(pawn,1)
+ check(fallback==0 and not adapter.monoClimb,'native locomotion reaching the platform needs no fallback')
+ adapter.monoClimb=attempt()
+ at={X=-809,Y=14010,Z=29065}
+ adapter:updateMonoClimb(pawn,1)
+ check(fallback==1 and not adapter.monoClimb,'root motion blocked by the scene releases to the checked path once')
+end
+do
+ local Native=require('finale_native')
+ local previousFind,previousAll=StaticFindObject,FindAllOf
+ local clock,loads=0,0
+ local at={X=-809,Y=14075,Z=29110}
+ local six={valid=true,GetFullName=function()return 'BridgeScene Six' end,K2_GetActorLocation=function()return at end}
+ function six:SetActorHiddenInGame(hidden)self.bHidden=hidden end
+ local duplicate={valid=true,SetActorHiddenInGame=six.SetActorHiddenInGame,GetFullName=function()
+  return 'SkeletalMeshActor /Game/Levels/Transmission/SubLevels/LVL_6_140_CollapsingRunExit_02.LVL_6_140_CollapsingRunExit_02:PersistentLevel.SKM_Six3'
+ end}
+ local otherSix={valid=true,SetActorHiddenInGame=six.SetActorHiddenInGame,GetFullName=function()
+  return 'SkeletalMeshActor /Game/OtherRoom.OtherRoom:PersistentLevel.SKM_Six3'
+ end}
+ local mesh={valid=true,bVisible=false,bRenderInMainPass=true,
+  SkeletalMesh={valid=true,GetFullName=function()return 'SkeletalMesh /Game/Scene/Variants.SKM_SixBridge' end}}
+ local function engineParam(object)return {get=function()return object end}end
+ function six:K2_GetComponentsByClass()return {engineParam(mesh)}end
+ function mesh:GetOwner()return six end
+ function mesh:IsVisible()return self.bVisible end
+ function mesh:SetVisibility(visible)self.bVisible=visible end
+ function mesh:SetHiddenInGame(hidden)self.bHiddenInGame=hidden end
+ function mesh:SetRenderInMainPass(rendered)self.bRenderInMainPass=rendered end
+ function mesh:K2_GetComponentLocation()return at end
+ function mesh:K2_GetComponentRotation()return {Pitch=2,Yaw=95,Roll=3}end
+ function mesh:GetNumMaterials()return 0 end
+ local pose={valid=true,SequenceLength=2}
+ local activePose,seek,rate
+ local visual={SetMobility=function()end,SetCollisionEnabled=function()end,SetSkeletalMesh=function()end,
+  PlayAnimation=function(_,value)activePose=value end,SetPosition=function(_,value)seek=value end,
+  SetPlayRate=function(_,value)rate=value end}
+ local actor={valid=true,SkeletalMeshComponent=visual,SetActorEnableCollision=function()end,
+  K2_DestroyActor=function(self)self.valid=false end}
+ partner.GetWorld=function()return {SpawnActor=function(_,_,_,rotation)
+  check(rotation.Yaw==275 and rotation.Pitch==2 and rotation.Roll==3,'Six faces the rescued Mono with a half turn')
+  loads=loads+1;return actor
+ end}end
+ StaticFindObject=function(path)
+  if path:find('PersistentLevel.SKM_Six2',1,true)then return nil end
+  return {valid=true}
+ end
+ FindAllOf=function(class)return class=='SkeletalMeshActor' and {duplicate,otherSix} or {}end
+ local adapter=Native.new({live=function(object)
+   if object==nil then return false end
+   check(not object.get,'reflected array entries must be unwrapped before UObject access')
+   return live(object)
+  end,same=function(a,b)return a==b and live(a)end,
+  world=function(a,b)return live(a) and live(b) and a~=six and a~=duplicate end,log=function()end,
+  UE={GetGameplayStatics=function()return {
+   GetTimeSeconds=function()return clock end,
+   GetAllActorsOfClass=function(_,_,_,out)out[1]=engineParam(six)end}
+  end}})
+ adapter.sixPull={asset=pose,startedAt=0,nextSearch=0,rate=1.25}
+ adapter:updateSix(partner)
+ check(loads==0,'hidden Six is not substituted before the cutscene reveals her')
+ mesh.bVisible=true;clock=.25
+ adapter:updateSix(partner)
+ check(loads==1 and activePose==pose and rate==1.25 and seek==clock*rate and not mesh.bVisible,
+  'late-bound Six starts on the same normalized animation frame as P2')
+ check(six.bHidden and mesh.bHiddenInGame and not mesh.bRenderInMainPass and duplicate.bHidden and not otherSix.bHidden,'streamed Six actors are hidden even when their world lookup disagrees')
+ mesh.bVisible=true;mesh.bHiddenInGame=false;mesh.bRenderInMainPass=true;six.bHidden=false;duplicate.bHidden=false;clock=.5;adapter:updateSix(partner)
+ check(loads==1 and not mesh.bVisible and mesh.bHiddenInGame and not mesh.bRenderInMainPass and six.bHidden and duplicate.bHidden,'native visibility changes cannot overlap the rescue visual')
+ adapter:clearSixPull()
+ check(mesh.bVisible and not mesh.bHiddenInGame and mesh.bRenderInMainPass and not six.bHidden and not duplicate.bHidden and not actor.valid,'cleanup restores Six and removes the temporary visual')
+ StaticFindObject,FindAllOf=previousFind,previousAll
+end
+do
+ local Lift=require('finale_lift')
+ local blocked,moves=false,{}
+ local corrections=0
+ local anim={valid=true,RootMotionMode=3,SetRootMotionMode=function(self,mode)self.RootMotionMode=mode end}
+ local movement={valid=true,MovementMode=3,tick=true,StopMovementImmediately=function()end,
+  SetMovementMode=function(self,mode)self.MovementMode=mode end,
+  IsComponentTickEnabled=function(self)return self.tick end,
+  SetComponentTickEnabled=function(self,enable)self.tick=enable end}
+ local victim
+ function movement:K2_FindFloor(point,result)
+  if victim.collision and point.Y>=14105 and point.Z>=29128 and point.Z<=29188 then
+   result.bBlockingHit,result.bWalkableFloor,result.FloorDist=true,true,point.Z-29128
+  end
+ end
+ local function atEdge()return {X=-809,Y=14010,Z=29065}end
+ victim={valid=true,CharacterMovement=movement,position=atEdge(),collision=true,
+  GetActorEnableCollision=function(self)return self.collision end,
+  SetActorEnableCollision=function(self,enable)self.collision=enable end,
+  Mesh={valid=true,GlobalAnimRateScale=1,GetAnimInstance=function()return anim end},
+  CapsuleComponent={valid=true,GetScaledCapsuleRadius=function()return 26 end}}
+ function victim:K2_GetActorLocation()return self.position end
+ function victim:K2_SetActorLocation(target,sweep)
+  if not sweep then corrections=corrections+1 end
+  moves[#moves+1]=target;self.position=target
+ end
+ local adapter=Lift.new({live=live,same=function(a,b)return a==b and live(a)end,log=function()end,
+  clear=function()return not blocked end})
+ local plan=adapter:prepare(victim,0,2,1.5)
+ check(plan and plan.plan.target.Z==29131,'the landing uses an actual walkable floor')
+ adapter:begin(plan)
+ check(not movement.tick and not victim.collision and victim.Mesh.GlobalAnimRateScale==1.5,
+  'native movement and overlap reactions are suspended and the Mono clip takes the shared rate')
+ victim.position={X=-809,Y=14044,Z=28974}
+ adapter:update(victim,.8)
+ check(corrections==1 and victim.position.Y==14010 and victim.position.Z>29065 and anim.RootMotionMode==1,
+  'the scripted handhold is corrected to the verified path before rising')
+ adapter:update(victim,2.1)
+ check(plan.landed and victim.position.Y>14105 and movement.MovementMode==1 and victim.collision,'P2 reaches the platform with ground collision restored')
+ adapter:release()
+ check(anim.RootMotionMode==3 and movement.MovementMode==1 and movement.tick and victim.Mesh.GlobalAnimRateScale==1,
+  'a successful pull restores animation and movement without dropping P2')
+ victim.position=atEdge();movement.MovementMode=3
+ adapter:begin(adapter:prepare(victim,3,2))
+ blocked=true
+ local count=#moves
+ adapter:update(victim,4)
+ check(not adapter.active and #moves==count and anim.RootMotionMode==3 and movement.MovementMode==3
+  and movement.tick and victim.collision,'a new collision cancels cleanly without moving through it')
+end
 local sleepAsset={valid=true}
 local wakeAsset={valid=true,GetFullName=function()return 'ANIM_Player_SleepingAwakeningIntro2'end}
 local data={valid=true,SleepingAnimation=sleepAsset,WakeUpAnimation=wakeAsset,GetFullName=function()return 'native spawn data'end}
@@ -537,17 +950,103 @@ adapter:born(p2)
 check(adapter:plan(p2,true,20).defer,'a primary with no sleep pose cannot invent an intro')
 StaticFindObject=oldStatic
 print('PASS: native initial-pose fallback uses existing assets without replaying unrelated animations.')
+do
+ local center={X=300,Y=400,Z=500}
+ local first=pawn(true)
+ first.K2_GetActorLocation=function()return center end
+ first.K2_GetActorRotation=p2.K2_GetActorRotation
+ local primary={Pawn=first}
+ local checkpoint={valid=true,SpawnAnimations=cp.SpawnAnimations,WakeUpImmediately=true,
+  GetFullName=function()return 'BP_HeliosPlayerStart_C ActualCheckpoint'end}
+ local wrongWorld={valid=true}
+ local enabled=true
+ local native=SpawnNative.new({live=live,same=function(a,b)return a==b end,
+  world=function(a,b)return a==checkpoint and b==first end,p1=function()return primary end,
+  driver={pawn=p2},session={enabled=enabled},log=function()end})
+ local observed,callback,registrations,loaded=0,nil,0,false
+ local savedStatic,savedRegister=StaticFindObject,RegisterHook
+ StaticFindObject=function()return loaded and checkpoint or nil end
+ RegisterHook=function(path,fn)
+  check(path:find(':EventPlayerSpawned',1,true),'read the authored checkpoint event')
+  callback=fn;registrations=registrations+1
+ end
+ local born=0
+ local localSpawn=Spawn.new(setmetatable({born=function(p)
+  check(p==first,'only capture the live primary')
+  born=born+1;native:born(p)
+ end},{__index=sApi}))
+ localSpawn:enable(false);plan=nil
+ localSpawn:update(first,true,false,false,1)
+ check(localSpawn:update(first,true,false,false,1.4) and born==1,'capture the first native spawn')
+ localSpawn:invalidate(first)
+ death:reset();death:begin({},first,'P2',true)
+ local function confirm(confirmed)
+  observed=observed+1
+  localSpawn:confirmReload(confirmed)
+  death:confirmReload(confirmed)
+ end
+ native:installCheckpointWatch(1.5,confirm)
+ loaded=true;native:installCheckpointWatch(1.7,confirm)
+ check(registrations==0,'avoid repeated lookup during streaming')
+ native:installCheckpointWatch(2.1,confirm);native:installCheckpointWatch(3,confirm)
+ check(registrations==1,'install the observer once the checkpoint Blueprint is available')
+ local function handle(point,actor)
+  callback({get=function()return point end},{get=function()return actor end})
+ end
+ handle(checkpoint,p2);handle(wrongWorld,first)
+ check(observed==0 and not death:update({},first,nil)
+  and not localSpawn:update(first,true,false,false,3),'foreign notifications cannot resume either coordinator')
+ center={X=700,Y=800,Z=900}
+ handle(checkpoint,first)
+ check(observed==1 and death:update({},first,nil),'native spawn completes the shared death state with the same living pawn')
+ check(not localSpawn:update(first,true,false,false,3.2) and born==2,
+  'native confirmation refreshes the reused pawn’s origin before the stability interval')
+ check(localSpawn:update(first,true,false,false,3.6) and native.origin==center,
+  'same-pawn checkpoint resumes controls only after native readiness')
+ check(native:plan(first,true,4).immediate,'the checkpoint that actually spawned P1 supplies its wake animation')
+ StaticFindObject,RegisterHook=savedStatic,savedRegister
+
+ local otherPose={valid=true}
+ local stops=0
+ p2.mAnimationControlComponent.IsPlayingOverrideAnimation=function()return true end
+ p2.mAnimationOverrideComponent={
+  PlayAnimationSequenceOverride2=function(_,asset)p2.mAnimationControlComponent.mCurrentAnimStateAsset=asset end,
+  StopAnimationSequenceOverride=function()stops=stops+1 end,
+ }
+ native:play(wakeAsset,false,2)
+ check(native:api().playing(),'the adapter owns its own wake clip')
+ p2.mAnimationControlComponent.mCurrentAnimStateAsset=otherPose
+ check(not native:api().playing(),'a following story animation is outside the respawn lock')
+ native:cancel()
+ check(stops==0,'checkpoint cleanup preserves a different active pose')
+ native:play(wakeAsset,false,2);native:cancel()
+ check(stops==1,'checkpoint cleanup releases its unfinished wake clip')
+end
+print('PASS: native checkpoint events unblock both lifecycle gates and preserve later animation ownership.')
 dofile('tests/coop_ui.lua')
 dofile('tests/coop_call.lua')
 dofile('tests/six_appearance.lua')
+dofile('tests/six_control.lua')
+dofile('tests/six_hoist.lua')
 dofile('tests/main_hooks.lua')
 dofile('tests/teleport.lua')
 dofile('tests/gamepad.lua')
+dofile('tests/online.lua')
 dofile('tests/cinematic_trace.lua')
 dofile('tests/cinematics.lua')
+dofile('tests/cinematic_raft.lua')
+dofile('tests/cinematic_tv.lua')
 dofile('tests/ledge_rescue.lua')
 dofile('tests/hand_rescue.lua')
+dofile('tests/hand_offer.lua')
 dofile('tests/coop_events.lua')
+dofile('tests/subject_trace.lua')
+dofile('tests/coop_story_items.lua')
+dofile('tests/coop_bully_head.lua')
+dofile('tests/coop_bully_rules.lua')
+dofile('tests/music_box_transition.lua')
+dofile('tests/tower_axe_transition.lua')
+dofile('tests/achievements.lua')
 local marker=require('camera_marker')
 local frame={left=100,top=0,right=1266,bottom=768}
 assert(not marker.place(frame,683,384,nil,nil,1),'visible player has no arrow')

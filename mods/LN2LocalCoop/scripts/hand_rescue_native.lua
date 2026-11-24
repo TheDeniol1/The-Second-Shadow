@@ -6,8 +6,7 @@ local H={};H.__index=H
 local paths={
  ready='/Game/Characters/Six/Animations/ANIM_Six_GapHelpReadyLoop.ANIM_Six_GapHelpReadyLoop',
  pull='/Game/Characters/Six/Animations/ANIM_Six_GapHelpPullUp.ANIM_Six_GapHelpPullUp',
- rise='/Game/Characters/Player/Animations/ANIM_Player_GapHelpPulledUp.ANIM_Player_GapHelpPulledUp',
- hoist='/Game/Characters/Six/Animations/ANIM_Six_HoistEnterFwd.ANIM_Six_HoistEnterFwd'}
+ rise='/Game/Characters/Player/Animations/ANIM_Player_GapHelpPulledUp.ANIM_Player_GapHelpPulledUp'}
 local hands={'skinned_l_handPlacement_bn','skinned_r_handPlacement_bn'}
 local function copy(v)return {X=v.X,Y=v.Y,Z=v.Z}end
 function H.new(c)
@@ -30,6 +29,18 @@ end
 function H:own(p,asset)
  return self.c.live(p)and self.c.live(p.mAnimationControlComponent)
   and self.c.same(p.mAnimationControlComponent.mCurrentAnimStateAsset,asset)
+end
+function H:ownsAnimation(pawn)
+ local a=self.control.active
+ local c=self.c
+ if not a then return false end
+ if c.same(pawn,a.h) then return self:own(pawn,a.hAsset) end
+ if not c.same(pawn,a.v) then return false end
+ if a.native then
+  local interface=a.native.interface
+  return c.live(interface) and interface.mGrabbingState==4 and self:own(pawn,a.native.climbAsset)
+ end
+ return self:own(pawn,a.vAsset)
 end
 function H:freezePrimary(a)
  if a.primary then return end
@@ -92,11 +103,6 @@ function H:free(p)
  return not ac:IsPlayingOverrideAnimation()and not self.c.live(grab)
   and not(self.c.live(pickup)and self.c.live(pickup:GetCurrentlyHeldPickup()))
 end
-local function crouched(p)
- if p.bIsCrouched then return true end
- local amount=p.Mesh:GetAnimInstance().CrouchAmount
- return type(amount)=='number'and amount>=.85
-end
 local function clearReach(helper,partner,from,to)
  local library=StaticFindObject('/Script/Engine.Default__KismetSystemLibrary')
  local color={R=0,G=0,B=0,A=0}
@@ -104,26 +110,7 @@ local function clearReach(helper,partner,from,to)
  return not library:CapsuleTraceSingleByProfile(helper,from,to,1,1,
   helper.CapsuleComponent:GetCollisionProfileName(),false,{helper,partner},0,{},true,color,color,0)
 end
-function H:boost(a)
- local h,v,role=a.h,a.v,a.role
- if v.CharacterMovement.MovementMode~=1 or not self:free(v)or crouched(v)then return false end
- local hc,vc=h.CapsuleComponent,v.CapsuleComponent
- if not self.c.live(hc)or not self.c.live(vc)then return end
- local from,to=h:K2_GetActorLocation(),v:K2_GetActorLocation()
- local dx,dy=to.X-from.X,to.Y-from.Y
- local facing=h:GetActorForwardVector()
- if dx*dx+dy*dy>135^2 or dx*facing.X+dy*facing.Y<0
-  or math.abs((to.Z-vc:GetScaledCapsuleHalfHeight())-(from.Z-hc:GetScaledCapsuleHalfHeight()))>28
-  or not clearReach(h,v,from,to)then return end
- local gravity=-v.CharacterMovement:GetGravityZ()
- if gravity<=0 then return end
- self:finish('Salto asistido de P'..(3-role))
- -- Target roughly 235 cm of extra reach in the current level's gravity.
- -- The character keeps its horizontal motion and native grab/collision.
- v:LaunchCharacter({X=0,Y=0,Z=math.sqrt(2*gravity*235)},false,true)
- return true
-end
-function H:begin(h,v,role,now,boostReady)
+function H:begin(h,v,role,now)
  if h.CharacterMovement.MovementMode~=1 or not self:free(h)then return end
  local assets=self:assets()
  -- Read the same reflected property used by the cinematic adapter. Cache
@@ -131,22 +118,15 @@ function H:begin(h,v,role,now,boostReady)
  local pullLength,riseLength=assets.pull.SequenceLength,assets.rise.SequenceLength
  local duration=type(pullLength)=='number'and type(riseLength)=='number'and math.max(pullLength,riseLength)
  local a={h=h,v=v,hc=h.Controller,vc=v.Controller,role=role,assets=assets,
-  hAsset=boostReady and assets.hoist or assets.ready,airDuration=duration,anchor=copy(h:K2_GetActorLocation()),since=now,last=now,
-  phase=boostReady and 'boostReady' or 'ready'}
+  hAsset=assets.ready,airDuration=duration,anchor=copy(h:K2_GetActorLocation()),since=now,last=now,
+  phase='ready'}
  -- Own the record before any mutation, so a partial start can be rolled back.
  self.control.active=a
- if boostReady then
-  self.released[role]=false
-  a.anchorFeet=a.anchor.Z-h.CapsuleComponent:GetScaledCapsuleHalfHeight()
-  a.helperGrab=self.base:held(h)~=false
-  a.partnerGrab=self.base:held(v)~=false
- end
  if role==1 then self:freezePrimary(a)end
  h.CharacterMovement:StopMovementImmediately()
  self:clear(h,a.hc)
  h.mAnimationOverrideComponent:PlayAnimationSequenceOverride2(a.hAsset,1,true,0,.15,.15)
- self:message(boostReady and 'Salto preparado: el companero debe pulsar agarre'
-  or 'Mano extendida: acerca al companero; suelta para cancelar')
+ self:message('Mano extendida: acerca al companero; suelta para cancelar')
 end
 function H:contact(a)
  local c=self.c;local h,v=a.h,a.v
@@ -160,13 +140,18 @@ function H:contact(a)
  if not a.loggedSockets then
   a.loggedSockets=true;self.c.log('Rescate mano: consultando anclajes con FName')
  end
- local nearest
+ local nearest,nearestDistance
  for _,hname in ipairs(hands)do for _,vname in ipairs(hands)do
   -- Reflected NameProperty parameters require FName userdata, not Lua strings.
   local hb,vb=FName(hname),FName(vname)
   if h.Mesh:DoesSocketExist(hb)and v.Mesh:DoesSocketExist(vb)then
    local x,y=h.Mesh:GetSocketLocation(hb),v.Mesh:GetSocketLocation(vb)
-   if Rules.closeHands(x,y,edge~=nil)then nearest={copy(x),copy(y)};break end
+   if Rules.closeHands(x,y,edge~=nil)then
+    local distance=AirPath.distance2(x,y)
+    if not nearestDistance or distance<nearestDistance then
+     nearest,nearestDistance={copy(x),copy(y)},distance
+    end
+   end
   end
  end end
  if not nearest then return end
@@ -309,14 +294,13 @@ function H:step(blocked)
   for role=1,2 do
    if self.released[role]and self:held(role)then
     local h,v=role==1 and p or q,role==1 and q or p
-    local boostReady=self.c.state.jumpAssist and h.CharacterMovement.MovementMode==1 and crouched(h)
-    self:begin(h,v,role,now,boostReady)
+    self:begin(h,v,role,now)
     if self.control.active then break end
    end
   end
   return self.control.active~=nil
  end
- if a.phase~='boostReady' and not self:held(a.role)then
+ if not self:held(a.role)then
   self:finish('Mano soltada');self.released[a.role]=true;return false
  end
  if not(self.c.same(a.h,p)or self.c.same(a.h,q))or not(self.c.same(a.v,p)or self.c.same(a.v,q))
@@ -325,41 +309,21 @@ function H:step(blocked)
  end
  if now<a.last or now-a.last>.25 then self:finish('Asistencia interrumpida');return false end
  a.last=now
- if a.phase=='boostReady' then
+ if a.phase=='ready' then
   local hp=a.h:K2_GetActorLocation()
-  local dx,dy=hp.X-a.anchor.X,hp.Y-a.anchor.Y
-  local dz=hp.Z-a.h.CapsuleComponent:GetScaledCapsuleHalfHeight()-a.anchorFeet
   local playing=a.h.mAnimationControlComponent:IsPlayingOverrideAnimation()
   local own=self:own(a.h,a.hAsset)
-  -- The override and the crouch capsule settle on the following tick.
-  -- Judge actual displacement at the feet, not the temporary mode enum.
-  local starting=not a.poseSeen and now-a.since<=.2 and not playing
-  if not self.c.state.jumpAssist or (not (own and playing) and not starting)
-   or dx*dx+dy*dy>16^2 or math.abs(dz)>30 then
-   self.c.log(string.format('Salto preparado interrumpido: modo=%s propia=%s activa=%s desplazamiento=%.1f,%.1f,%.1f',
-    tostring(a.h.CharacterMovement.MovementMode),tostring(own),tostring(playing),dx,dy,dz))
-   self:finish('Postura interrumpida');return false
-  end
-  a.poseSeen=a.poseSeen or (own and playing)
-  local helperGrab,partnerGrab=self.base:held(a.h),self.base:held(a.v)
-  if (self.released[a.role]and self:held(a.role))or (helperGrab==true and not a.helperGrab)then
-   self:finish('Preparacion de salto cancelada');return false
-  end
-  self:clear(a.h,a.hc)
-  if own and playing and partnerGrab==true and not a.partnerGrab then
-   if self:boost(a)then return false end
-   self:message('Acercate por delante y vuelve a pulsar agarre')
-  end
-  a.helperGrab=helperGrab~=false;a.partnerGrab=partnerGrab~=false
- elseif a.phase=='ready' then
-  local hp=a.h:K2_GetActorLocation()
-  if not self:own(a.h,a.hAsset)or not a.h.mAnimationControlComponent:IsPlayingOverrideAnimation()
-   or (hp.X-a.anchor.X)^2+(hp.Y-a.anchor.Y)^2+(hp.Z-a.anchor.Z)^2>16 then
+  -- An override can first reach the animation graph on the following tick.
+  local starting=not a.poseSeen and not playing and now-a.since<.18
+  if (not (own and playing) and not starting) or AirPath.distance2(hp,a.anchor)>8^2 then
    self:finish('Postura interrumpida');return false
   end
   self:clear(a.h,a.hc)
-  local contact=self:contact(a)
-  if contact and now-a.since>=.15 then self:capture(a,contact,now)end
+  if own and playing then
+   a.poseSeen=true
+   local contact=now-a.since>=.15 and self:contact(a)
+   if contact then self:capture(a,contact,now)end
+  end
  elseif a.phase=='ledge' then
   local edge,interface=self.base:ledge(a.v)
   local hp,vp=a.h:K2_GetActorLocation(),a.v:K2_GetActorLocation()
@@ -377,7 +341,7 @@ function H:step(blocked)
   self.base:climb(a.native,{hanging=edge~=nil,now=now})
   self.base:observeClimb(a.native,{now=now})
   if a.native.observedClimb and not a.native.started then
-   self.base:playPull(a.native);a.hAsset=a.assets.pull
+   a.hAsset=a.assets.pull;self.base:playPull(a.native)
    self:message('Ayudando a subir: manten la mano')
   end
   self.base:maintain()
@@ -430,7 +394,7 @@ end
 function H:route(direction,input,yaw)
  local a=self.control.active
  if a and a.native then return self.base:route(direction,input,yaw)end
- if not a or not(self.c.same(self.c.driver.pawn,a.h)or a.captured)then return direction,input end
+ if not a or not(self.c.same(self.base:secondPawn(),a.h)or a.captured)then return direction,input end
  return {X=0,Y=0,Z=0},{x=0,y=0,grab=false,jump=false,sneak=false,sprint=false,use=false,gadget=false}
 end
 return H

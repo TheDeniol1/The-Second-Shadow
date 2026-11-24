@@ -15,14 +15,22 @@
   },
   "public_download_verified": true,
   "download_url": "https://github.com/UE4SS-RE/RE-UE4SS/releases/download/experimental/zDEV-UE4SS_v3.0.1-1161-g6eb3d9bc.zip",
-  "verified_date": "2026-11-16",
+  "verified_date": "2026-11-23",
   "verification": "Descarga de GitHub verificada. Se cotejaron las huellas SHA-256 del ZIP de UE4SS y de la DLL instalada.",
   "clean_gameplay_test": "user_confirmed_chapter_one_through_hunter_keyboard_gamepad_settings_persistence_before_native21_package",
-  "native21_gameplay_test": "user_confirmed_p1_keyboard_recovery_after_loading",
   "six_appearance_gameplay_test": "user_confirmed_dark_six_jumper_and_yellow_raincoat_transitions",
   "default_preferences": "configuracion/preferences-default.ini",
   "native_adapter": {
-    "file": "ln2_native_21.dll",
-    "sha256": "fc63ea6e26e1739c982615913f77181914d1d170539dc1bd2ac0ea7bb9d413df"
-  }
+    "file": "ln2_native_29.dll",
+    "sha256": "b56ae24217dd299521b3a9468da5b2f714c1e228b7881d056c2c3cee2447bc6e"
+  },
+  "mod_version": "0.8.0-alpha",
+  "steam_icons_adapter": {
+    "file": "ln2_steam_icons.dll",
+    "sha256": "abc1960ac591b35b7ce13fd4fdc6559f362cc113960921b5e6d8957b2389b7be"
+  },
+  "bully_head_gameplay_test": "user_confirmed_p2_picks_own_bully_head_and_keeps_it_after_checkpoint",
+  "squeeze_gap_gameplay_test": "user_confirmed_narrow_gap_answers_p2",
+  "known_issue": "bully_push_still_knocks_down_p1_fix_untested_in_game",
+  "p1_keyboard_recovery_gameplay_test": "user_confirmed_p1_keyboard_recovery_after_loading"
 }

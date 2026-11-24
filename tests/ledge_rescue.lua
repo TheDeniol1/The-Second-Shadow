@@ -54,7 +54,7 @@ local edge=obj(6);local interface=obj(7);local asset=obj(8);local class=obj(9)
 local climbAsset=obj(10)
 local moved,stopped,plays=0,0,0;local time=0;local down=true
 local rescueLogs={}
-local c={state={enabled=true},spawn={phase='active'},death={},gamepad={owner=1},
+local c={state={enabled=true},spawn={phase='active'},death={},gamepad={forRole=function()end},
  driver={pawn=q,pc=qc},p1=function()return pc end,foreground=function()return true end,
  input=function()return {grab=down}end,physicalKey=function()return down end,
  log=function(message)rescueLogs[#rescueLogs+1]=message end,
@@ -222,6 +222,36 @@ p.mAnimationOverrideComponent.PlayAnimationSequenceOverride2=function()error('si
 n:select();assert(not n:update(false))
 assert(ticking and p.rotation.Yaw==45 and not n.pending,'partial startup rolls back controller and facing')
 p.mAnimationOverrideComponent.PlayAnimationSequenceOverride2=play
+local ordinaryP2=q
+local six,ai=obj(109),obj(110)
+six.Controller=ai;ai.Pawn=six
+pawn(six,70)
+ai.mBodyAnimator.mPawnSelf=six
+ai.PlayerCameraManager=nil -- The story AI controller has no local camera.
+local storyControlled=true
+c.playpal=function()return six,storyControlled end
+c.cameraYaw=function(pawn)assert(pawn==six);return 90 end
+local nc=Native.new(c)
+local first,partner=nc:pair()
+assert(first==p and partner==six and c.driver.pawn==ordinaryP2,'rescue resolves the actual Six through P2 ownership')
+storyControlled=false
+assert(not nc:pair(),'rescue cannot control Six while a story action owns her')
+storyControlled=true
+local grabPolls=0
+c.input=function()grabPolls=grabPolls+1;return {grab=true}end
+assert(nc:held(six) and grabPolls==1,'the actual Six reads the P2 grab binding')
+nc.control.active={p=six,pc=ai,h=p,hc=pc,direction={X=0,Y=1,Z=0},driven=true}
+local raw
+ai.mBodyAnimator.SetRawMoveInput=function(_,direction)raw=direction end
+nc:maintain()
+assert(math.abs(raw.X-1)<.001 and math.abs(raw.Y)<.001,'native climb gets camera-relative input without an AI camera')
+rd,ri=nc:route({X=0,Y=0,Z=0},{grab=true},90)
+assert(rd.Y==1 and ri.grab and not ri.jump,'F1 drives the hanging Six and leaves her native grab held')
+nc.control.active={p=p,pc=pc,h=six,hc=ai,direction={X=0,Y=1,Z=0},driven=true}
+rd,ri=nc:route({X=0,Y=1,Z=0},{grab=true},90)
+assert(rd.Y==0 and not ri.grab,'F2 routes Six as the helper and prevents an unrelated grab')
+ai.Pawn=ordinaryP2
+assert(not nc:pair(),'a stale Six controller is excluded')
 StaticFindObject=oldStatic
 print('PASS: native ledge selection, both roles, mapped grab, helper animation cleanup and menu cancellation.')
 local Physical=require('rescue_input')

@@ -2,7 +2,7 @@
 local M={};M.__index=M
 function M.new(root,live,log)
  local self=setmetatable({live=live,log=log},M)
- for _,filename in ipairs({'ln2_native_21.dll','ln2_native_20.dll','ln2_native_19.dll','ln2_native_18.dll','ln2_native_17.dll','ln2_native_16.dll','ln2_native_15.dll','ln2_native_14.dll','ln2_native_13.dll','ln2_native_12.dll','ln2_native_11.dll','ln2_native_10.dll','ln2_native_09.dll','ln2_native_08.dll','ln2_native_07.dll','ln2_native_06.dll','ln2_native_04.dll'}) do
+ for _,filename in ipairs({'ln2_native_29.dll'}) do
   local ok,api=pcall(function()
    local loader,err=package.loadlib(root..filename,'luaopen_ln2_native')
    assert(loader,err)
@@ -39,6 +39,11 @@ function M:ready()
 end
 function M:crouch(held)
  if self:ready() then self.api.crouch(held and 1 or 0) end
+end
+function M:sixCrouch(animator,held)
+ if not (self.api and self.api.six_crouch and self.live(animator)) then return end
+ local pawn=animator.mPawnSelf
+ if self.live(pawn) then self.api.six_crouch(pawn:GetAddress(),animator:GetAddress(),held and 1 or 0) end
 end
 function M:jump(held,wasHeld)
  if not self:ready() or not self.api.jump then return false end
@@ -149,7 +154,9 @@ function M:routeActor(address,target)
  if self.api and self.api.route_actor then
   local ok,err=pcall(self.api.route_actor,address,target and 1 or 0)
   if not ok then self.log('Redireccion de evento (actor): '..tostring(err)) end
+  return ok
  end
+ return false
 end
 function M:routeClear()
  if self.api and self.api.route_clear then pcall(self.api.route_clear) end
@@ -160,14 +167,76 @@ function M:routeActive(on)
   local lookup=StaticFindObject(playerLookup)
   if not self.live(lookup) then self.log('Redireccion de eventos: no se encontro el getter del jugador');return false end
   local ok,err=pcall(self.api.route_active,1,lookup:GetAddress())
-  if not ok then self.log('Redireccion de eventos: '..tostring(err));return false end
+  if not ok then
+   if err~=self.routeError then self.log('Redireccion de eventos: '..tostring(err)) end
+   self.routeError=err
+   return false
+  end
+  self.routeError=nil
   return true
  end
  pcall(self.api.route_active,0)
  self.routeEnabled=false
  return false
 end
-function M:setInteracting(on)
- if self.api and self.api.set_interacting then pcall(self.api.set_interacting,on and 1 or 0) end
+-- Rule 1: lookups from a script whose frame names only P2 return P2.
+-- Returns the number of lookups resolved this way, or nil without support.
+function M:routeFrames(on)
+ if not self.api or not self.api.route_frames then return nil end
+ local ok,reads=pcall(self.api.route_frames,on and 1 or 0)
+ if ok then return reads end
+ if reads~=self.frameError then self.log('Eventos por contexto: '..tostring(reads)) end
+ self.frameError=reads
+end
+function M:weaponHitRoutes()
+ if self.api and self.api.route_hit_reads then return self.api.route_hit_reads() end
+end
+function M:routeMusicBox(on)
+ if self.api and self.api.route_music_box then
+  local ok,reads=pcall(self.api.route_music_box,on and 1 or 0)
+  if ok then return reads end
+  if reads~=self.boxRouteError then self.log('Redireccion de la caja musical: '..tostring(reads)) end
+  self.boxRouteError=reads
+ end
+end
+function M:subjectObserve(on)
+ if not self.api or not self.api.subject_observe then return false end
+ local ok,err
+ if on then
+  local lookup=StaticFindObject(playerLookup)
+  if not self.live(lookup) then return false end
+  ok,err=pcall(self.api.subject_observe,1,lookup:GetAddress())
+ else
+  ok,err=pcall(self.api.subject_observe,0)
+ end
+ if not ok and err~=self.subjectError then self.log('Sujeto de eventos: '..tostring(err)) end
+ self.subjectError=not ok and err or nil
+ return ok and on
+end
+function M:subjectGrabs(first,second)
+ if self.api and self.api.subject_grabs then pcall(self.api.subject_grabs,first,second) end
+end
+function M:subjectNext()
+ if not self.api or not self.api.subject_next then return end
+ local ok,entry=pcall(self.api.subject_next)
+ if ok then return entry end
+end
+function M:subjectStats()
+ if not self.api or not self.api.subject_stats then return 0,0 end
+ local ok,count,dropped=pcall(self.api.subject_stats)
+ if ok then return count,dropped end
+ return 0,0
+end
+function M:schoolEscort(pawn,observers)
+ if not self.api or not self.api.school_escort then return false end
+ local ok,err
+ if pawn then ok,err=pcall(self.api.school_escort,pawn,table.unpack(observers,1,math.min(#observers,48)))
+ else ok,err=pcall(self.api.school_escort,0) end
+ if not ok and self.escortError~=err then self.log('Cafeteria: '..tostring(err)) end
+ self.escortError=not ok and err or nil
+ return ok
+end
+function M:schoolEscortReads()
+ if self.api and self.api.school_escort_reads then return self.api.school_escort_reads() end
 end
 return M

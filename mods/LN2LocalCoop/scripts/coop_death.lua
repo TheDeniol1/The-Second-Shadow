@@ -2,6 +2,12 @@
 local D={};D.__index=D
 function D.new(api)return setmetatable({api=api},D)end
 function D:reset()self.pending=nil end
+function D:confirmReload(first)
+ if self.pending and not self.pending.confirmed and self.api.same(first,self.pending.first) then
+  self.pending.confirmed=true
+  return true
+ end
+end
 function D:begin(pc,first,who,restart,lost)
  -- Latch before invoking engine callbacks: never reload once per polling frame.
  self.pending={first=first,sawDeath=not restart}
@@ -18,7 +24,7 @@ function D:update(pc,first,second)
  if self.pending then
   if not api.live(first) then return false end
   if not api.alive(first) then self.pending.sawDeath=true;return false end
-  if not api.same(first,self.pending.first) or self.pending.sawDeath then
+  if not api.same(first,self.pending.first) or self.pending.sawDeath or self.pending.confirmed then
    self.pending=nil
    return true
   end

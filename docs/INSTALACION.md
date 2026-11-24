@@ -1,4 +1,4 @@
-# Instalación — v0.7.0 Alpha
+# Instalación — v0.8.0 Alpha
 
 Aquí te explico cómo instalar el mod en Little Nightmares II **original de Steam, para Windows x64**. Necesitas tener el juego instalado y Steam abierto. Descarga el mod y UE4SS por separado; el juego no viene incluido.
 
@@ -24,17 +24,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Instalar.ps1 -GameDirector
 
 El instalador comprueba la versión del juego y el ZIP de UE4SS antes de copiar los archivos. Si detecta UE4SS, un cargador o una carpeta Mods anterior, se detiene para evitar reemplazar tu instalación. En ese caso, consulta el apartado de instalaciones existentes más abajo.
 
-Dejé los eventos de P2, el rescate aéreo y la ayuda de salto desactivados al empezar. Puedes activarlos desde F6 si quieres probarlos. Tus cambios se guardan en preferences.ini. El paquete no incluye partidas guardadas.
+Al instalar desde cero empiezas con los Eventos de P2 y el agarre en el aire activados, y con el impulso de compañero desactivado. Puedes cambiarlos en F6 → 4. Tus cambios se guardan en preferences.ini. El paquete no incluye partidas guardadas.
 
 ## 3. Empezar
 
-Abre la edición original. **F7** invita o retira a P2; **F6** abre el menú. Para la introducción conjunta, activa P2 antes de comenzar una partida nueva. Consulta CONTROLES.md en el ZIP o la guía de controles del repositorio.
+Abre la edición original. **F7** invita o retira a P2; **F6** abre el menú. Para la introducción conjunta, activa P2 antes de comenzar una partida nueva. Si quieres jugar como Six, que es lo que te recomiendo, actívalo en **F6 → 4 → 5** desde el menú principal, antes de cargar la partida. Consulta CONTROLES.md en el ZIP o la guía de controles del repositorio.
 
-En partida confirmé el uso de teclado y mando, que los ajustes se conserven al reiniciar y que P1 recupera el teclado después de cargar. También probé el capítulo uno hasta la muerte del Cazador. El resto de la campaña sigue pendiente de pruebas.
+En partida confirmé el Bosque completo en cooperativo, el comienzo de la Escuela, el uso de teclado y mando y que los ajustes se conservan al reiniciar. El resto de la campaña sigue en pruebas; los fallos conocidos están en PENDIENTES.md.
 
 ## Instalaciones existentes y actualizaciones
 
-Con el juego cerrado, conserva una copia de LN2LocalCoop y su preferences.ini. Confirma que UE4SS.dll tenga SHA-256 `f176dc36fd2bc7b8211dde6ba54ade6f66da5c8f3a79e3017a85b45c215e8242`. Copia solo el contenido de Helios del ZIP sobre la raíz del juego; no copies configuracion sobre tus ajustes sin revisarlos. Activa LN2LocalCoop : 1 y desactiva SplitScreenMod : 0 en ue4ss/Mods/mods.txt. Reinicia el juego para cargar cambios.
+Si vienes de la v0.7.0 Alpha: con el juego cerrado, guarda una copia de LN2LocalCoop y de su preferences.ini, borra la carpeta scripts antigua, copia la nueva y vuelve a poner tu preferences.ini dentro. La DLL ln2_native_21.dll ya no se usa; ahora es ln2_native_29.dll. Tu preferences.ini sirve tal cual; para activar los Eventos de P2 usa F6 → 4 → 4. Confirma que UE4SS.dll tenga SHA-256 `f176dc36fd2bc7b8211dde6ba54ade6f66da5c8f3a79e3017a85b45c215e8242`. Copia solo el contenido de Helios del ZIP sobre la raíz del juego; no copies configuracion sobre tus ajustes sin revisarlos. Activa LN2LocalCoop : 1 y desactiva SplitScreenMod : 0 en ue4ss/Mods/mods.txt. Reinicia el juego para cargar cambios.
 
 La configuración de referencia se encuentra en configuracion/UE4SS-settings.ini. Para el mismo comportamiento, revisa EnableHotReloadSystem=0, EnableAutoReloadingLuaMods=0, UseCache=0 y bUseUObjectArrayCache=false. Los valores de consola solo controlan su presentación.
 
