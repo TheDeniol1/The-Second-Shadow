@@ -30,8 +30,8 @@ local TEXT={
  toast={es='Logro desbloqueado: %s',en='Achievement unlocked: %s'},
  empty={es='No se pudieron leer los logros de Steam.',en='Could not read the Steam achievements.'},
  soon={es='Próximamente',en='Coming soon'},
- soonNote={es='Estamos preparando los logros propios del mod. Desbloquear uno abrirá un final adicional.',
-  en="The mod's own achievements are in the works. Unlocking one will open an additional ending."},
+ soonNote={es='Estamos preparando los logros propios del mod. Desbloquear uno en específico abrirá un final adicional.',
+  en="The mod's own achievements are in the works. Unlocking a specific one will open an additional ending."},
 }
 M.TEXT=TEXT
 

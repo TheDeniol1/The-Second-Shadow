@@ -8,7 +8,7 @@ Con este mod puedes recorrer la pesadilla con otra persona en el mismo PC. P2 pu
 
 **v0.8.0 Alpha · Windows x64 · Edición original de Steam · MIT**
 
-> Esta es una alpha. En partida he comprobado el Bosque en cooperativo, el comienzo de la Escuela con la cabeza de abusón de cada jugador, teclado y mando, y que los ajustes se guardan. El resto de la campaña sigue en pruebas y te dejo los fallos que conozco en [pendientes](docs/PENDIENTES.md).
+> Esta es una alpha. En partida he jugado con **Jugar como Six** desde que Mono rescata a Six del sótano en el Bosque hasta que la secuestran en la Escuela, incluida la cabeza de abusón de cada jugador. También he comprobado teclado y mando y que los ajustes se guardan. El resto de la campaña sigue en pruebas y te dejo los fallos que conozco en [pendientes](docs/PENDIENTES.md).
 
 ## Jugar como Six: la forma más fiel de jugar
 
@@ -23,7 +23,7 @@ Hoy es también **el modo más estable**. Como el juego ya cuenta con Six en sus
 **Acciones en pareja.** No juegues como si fuerais dos personas por separado. Estas dos ayudas son las que más cambian la partida:
 
 - **Ofrecer la mano.** Pulsa una vez **F1** (P1), **F2** (P2) o **LB** en el mando. Si tu compañero está colgado de un borde, o cae en el aire delante de ti, lo agarras y lo subes solo. Vuelve a pulsar para retirar la mano.
-- **Impulso de compañero.** Pulsa **F3** (P1) o **F4** (P2) para agacharte en postura. Tu compañero se acerca por delante, pulsa agarrar y lo lanzas hacia arriba. Actívalo antes en **F6 → 4 → 3**.
+- **Impulso de compañero.** Pulsa **F3** (P1) o **F4** (P2) para agacharte en postura. Tu compañero se acerca por delante, pulsa agarrar y lo lanzas hacia arriba. Viene activado; puedes quitarlo en **F6 → 4 → 3**.
 
 **Cooperativo local completo.**
 
@@ -42,7 +42,7 @@ Hoy es también **el modo más estable**. Como el juego ya cuenta con Six en sus
 
 ## Lo que viene
 
-- **Logros propios.** El menú del juego ya tiene la pestaña **Logros**: la de Steam muestra tus logros y la de The Second Shadow está vacía por ahora. Estoy preparando los logros del mod, y conseguir uno desbloqueará **un final adicional**.
+- **Logros propios.** El menú del juego ya tiene la pestaña **Logros**: la de Steam muestra tus logros y la de The Second Shadow está vacía por ahora. Estoy preparando los logros del mod, y conseguir uno en específico desbloqueará **un final adicional**.
 - **Modo en línea.** Aparece en **F6 → 1 → 2** como «En desarrollo» y todavía no hace nada en esta versión. [Cómo va a funcionar](docs/EN-LINEA.md).
 - **Correcciones.** Fallos y bloqueos de progreso que conozco y quiero resolver. Los apunto en [pendientes](docs/PENDIENTES.md).
 

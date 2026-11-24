@@ -5,7 +5,7 @@ Esta versión lleva el cooperativo más allá del Bosque y te recomiendo jugarla
 ## Acciones en pareja
 
 - **Ofrecer la mano, rehecha.** Basta con pulsar una vez **F1**, **F2** o **LB**. El ayudante agarra solo al compañero que entra al alcance, colgado de un borde o en el aire, y lo sube. Funciona en ambos sentidos, con dos Monos y jugando como Six.
-- **Impulso de compañero.** **F3** o **F4** preparan la postura y el compañero pulsa agarrar para salir lanzado hacia arriba. Se activa en **F6 → 4 → 3**.
+- **Impulso de compañero.** **F3** o **F4** preparan la postura y el compañero pulsa agarrar para salir lanzado hacia arriba. Viene activado y se puede quitar en **F6 → 4 → 3**.
 
 ## Eventos de P2
 
@@ -32,7 +32,7 @@ P2 toma el control de la Six de la historia mientras acompaña a Mono y pasa a D
 
 ## Menú del juego
 
-Nuevo botón **Logros** en el menú principal y en el de pausa. La pestaña de Steam muestra tus logros; la de The Second Shadow está vacía por ahora. Estoy preparando los logros propios del mod, y conseguir uno desbloqueará un final adicional.
+Nuevo botón **Logros** en el menú principal y en el de pausa. La pestaña de Steam muestra tus logros; la de The Second Shadow está vacía por ahora. Estoy preparando los logros propios del mod, y conseguir uno en específico desbloqueará un final adicional.
 
 ## En desarrollo
 
@@ -40,7 +40,7 @@ Nuevo botón **Logros** en el menú principal y en el de pausa. La pestaña de S
 
 ## Ajustes por defecto
 
-Los Eventos de P2 y el agarre en el aire vienen activados. El impulso de compañero viene desactivado. Si vienes de la v0.7.0 Alpha conservas tu preferences.ini; activa los Eventos de P2 en F6 → 4 → 4.
+Los Eventos de P2, el agarre en el aire y el impulso de compañero vienen activados. Si vienes de la v0.7.0 Alpha conservas tu preferences.ini; activa los Eventos de P2 en F6 → 4 → 4 y el impulso en F6 → 4 → 3.
 
 ## Fallo conocido
 
