@@ -78,7 +78,7 @@ Si muere cualquiera de los dos, se reinicia el checkpoint para ambos. P2 vuelve 
 
 Si P2 está colgado de una cornisa, su tecla de grito (**M**) muestra **P2 pide ayuda** para que P1 le ofrezca la mano. **F6 → 4 → 2** activa o desactiva el agarre en el aire; los bordes funcionan siempre. Vale con dos Monos y jugando como Six, con cualquiera de los dos como ayudante.
 
-**Impulso de compañero.** Viene activado; lo puedes quitar en **F6 → 4 → 3**. Pulsa **F3** con P1 o **F4** con P2 para agacharte en postura. Tu compañero se acerca por delante y pulsa agarrar para que lo lances hacia arriba. Para cancelar, vuelve a pulsar la misma tecla. Puedes reasignar la tecla de P2 en **F6 → 5 → Impulsar al compañero**.
+**Impulso de compañero.** Activa antes **F6 → 4 → 3**. Pulsa **F3** con P1 o **F4** con P2 para agacharte en postura. Tu compañero se acerca por delante y pulsa agarrar para que lo lances hacia arriba. Para cancelar, vuelve a pulsar la misma tecla. Puedes reasignar la tecla de P2 en **F6 → 5 → Impulsar al compañero**.
 
 ### Eventos de P2
 
@@ -113,7 +113,7 @@ El menú principal y el de pausa del juego tienen un botón **Logros**. La pesta
 | Teletransporte | F9 y F10, con efecto de televisión |
 | Separación peligrosa | Desactivada |
 | Agarre en el aire al ofrecer la mano | Activado |
-| Impulso de compañero | Activado |
+| Impulso de compañero | Desactivado (actívalo en F6 → 4 → 3) |
 | Eventos de P2 | Activados |
 | P2 | Dos Monos, con el sombrero que siga al de P1 |
 

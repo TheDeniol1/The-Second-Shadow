@@ -23,7 +23,7 @@ Hoy es también **el modo más estable**. Como el juego ya cuenta con Six en sus
 **Acciones en pareja.** No juegues como si fuerais dos personas por separado. Estas dos ayudas son las que más cambian la partida:
 
 - **Ofrecer la mano.** Pulsa una vez **F1** (P1), **F2** (P2) o **LB** en el mando. Si tu compañero está colgado de un borde, o cae en el aire delante de ti, lo agarras y lo subes solo. Vuelve a pulsar para retirar la mano.
-- **Impulso de compañero.** Pulsa **F3** (P1) o **F4** (P2) para agacharte en postura. Tu compañero se acerca por delante, pulsa agarrar y lo lanzas hacia arriba. Viene activado; puedes quitarlo en **F6 → 4 → 3**.
+- **Impulso de compañero.** Pulsa **F3** (P1) o **F4** (P2) para agacharte en postura. Tu compañero se acerca por delante, pulsa agarrar y lo lanzas hacia arriba. Actívalo antes en **F6 → 4 → 3**.
 
 **Cooperativo local completo.**
 
