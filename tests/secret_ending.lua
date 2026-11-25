@@ -65,18 +65,28 @@ local scene,calls=setup(true)
 scene.armed=true
 assert(scene:update(hero,10,true,false)==nil,'the scene waits for Six to catch Mono')
 hero.anim='ANIM_Player_GapHelpSixBetrayal'
-assert(scene:update(hero,11,true,false)=='hold' and calls.pull==1 and scene.phase=='pull','Six pulls Mono up instead of dropping him')
-assert(scene:update(hero,12,true,true)=='hold' and scene.phase=='pull','pausing holds the scene')
-scene:update(hero,13.5,true,false)
-calls.hugs=0;scene.api.hug=function() calls.hugs=calls.hugs+1 end
-assert(scene.phase=='together','after the pull both stay together on the bridge')
-scene:update(hero,14,true,false)
-assert(calls.hugs==1,'the together shot poses the hug')
-scene:update(hero,13.5+Secret.timing.together,true,false)
+calls.grab,calls.poses,calls.hugs,calls.secretPull=0,{},0,0
+scene.api.secretGrab=function() calls.grab=calls.grab+1 end
+scene.api.secretPull=function() calls.secretPull=calls.secretPull+1 return 1.5 end
+scene.api.secretSixPose=function(kind) calls.poses[#calls.poses+1]=kind return 1.5 end
+scene.api.secretHug=function() calls.hugs=calls.hugs+1 end
+scene.api.hug=function() error('the composed hug is not used with the new choreography') end
+assert(scene:update(hero,11,true,false)=='hold' and calls.grab==1 and scene.phase=='grab','Six grabs Mono instead of dropping him')
+assert(scene:update(hero,12,true,true)=='hold' and scene.phase=='grab' and calls.secretPull==0,'Mono hangs held for a few seconds')
+scene:update(hero,11+Secret.timing.grab,true,false)
+assert(scene.phase=='pull' and calls.secretPull==1 and calls.pull==0,'then Six pulls hard')
+local t=11+Secret.timing.grab+1.6
+scene:update(hero,t,true,false)
+assert(scene.phase=='fall' and calls.poses[1]=='fall' and calls.hugs==1,'the pull throws Six backwards with Mono on the bridge')
+t=t+1.2;scene:update(hero,t,true,false)
+assert(scene.phase=='kneel' and calls.poses[2]=='kneel','Six ends up on her knees')
+t=t+Secret.timing.kneel;scene:update(hero,t,true,false)
+assert(scene.phase=='together' and calls.hugs==1,'Mono hugs Six')
+t=t+Secret.timing.together;scene:update(hero,t,true,false)
 assert(scene.phase=='fade' and calls.fade==1,'the shot fades to black')
-scene:update(hero,13.5+Secret.timing.together+Secret.timing.fade,true,false)
+t=t+Secret.timing.fade;scene:update(hero,t,true,false)
 assert(scene.phase=='card' and calls.card==1,'the ending text appears in the dark')
-scene:update(hero,40,true,false)
+scene:update(hero,60,true,false)
 assert(scene.phase=='done' and calls.credits==1 and not scene.armed and calls.release==0,'the game credits close the hidden ending')
 assert(calls.frame[#calls.frame]==1,'the camera finishes the push-in before the fade')
 
@@ -87,9 +97,10 @@ for t=1,60 do failing:update(hero,t,true,false) end
 assert(failing.phase=='done' and fcalls.release==1,'if the credits cannot open the game gets its camera back')
 
 local menu,mcalls=setup(true)
+mcalls.secretRelease=0;menu.api.secretRelease=function() mcalls.secretRelease=mcalls.secretRelease+1 end
 menu.armed=true;menu:update(hero,1,true,false)
 menu:update(hero,2,false,false)
-assert(menu.armed and not menu.phase and mcalls.release==1,'returning to the menu stops the scene but keeps the ending for a retry')
+assert(menu.armed and not menu.phase and mcalls.release==1 and mcalls.secretRelease==1,'returning to the menu stops the scene but keeps the ending for a retry')
 
 -- El final queda guardado entre sesiones y se borra al verlo.
 local disk=false

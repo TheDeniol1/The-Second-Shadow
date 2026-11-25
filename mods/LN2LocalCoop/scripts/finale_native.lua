@@ -228,6 +228,99 @@ function N:frameRescue(second)
   pc:SetViewTargetWithBlend(shot.actor,0,0,0,false)
  end
 end
+-- Final oculto, por fases: Six agarra a Mono y lo sostiene unos segundos,
+-- tira de golpe, cae hacia atrás, queda de rodillas y Mono la abraza.
+local sixFall='/Game/Characters/Six/Animations/ANIM_Six_DragImpactBack.ANIM_Six_DragImpactBack'
+local sixKneel='/Game/Characters/Six/Animations/ANIM_Six_CrouchIdleShift.ANIM_Six_CrouchIdleShift'
+local monoHug='/Game/Characters/Player/Animations/ANIM_Player_CarryTeddyBearIdle.ANIM_Player_CarryTeddyBearIdle'
+N.secretPose={hugDistance=34,pullRate=1.6}
+function N:setAnimRate(pawn,rate)
+ local mesh=self.c.live(pawn) and pawn.Mesh or nil
+ if self.c.live(mesh) then mesh.GlobalAnimRateScale=rate end
+end
+-- Congela la secuencia del juego (Six sujetando a Mono) mientras dura el agarre.
+function N:holdSequences(first,on)
+ local c=self.c
+ if on then
+  self.heldSequences=self.heldSequences or {}
+  for _,actor in ipairs(FindAllOf('LevelSequenceActor')or{})do
+   local player=c.live(actor) and actor.SequencePlayer or nil
+   if c.live(player) and c.world(actor,first) and player:IsPlaying() then
+    player:Pause()
+    self.heldSequences[#self.heldSequences+1]=player
+    c.log('Final oculto: secuencia en pausa '..actor:GetFullName())
+   end
+  end
+ else
+  for _,player in ipairs(self.heldSequences or {})do
+   if c.live(player) then pcall(function() player:Play() end) end
+  end
+  self.heldSequences=nil
+ end
+end
+function N:secretGrab(first)
+ self:holdSequences(first,true)
+ self:setAnimRate(first,0)
+end
+function N:secretPull(first)
+ local rate=N.secretPose.pullRate
+ self:setAnimRate(first,rate)
+ local length=self:pull(first,rate)
+ return length
+end
+function N:sixClone()
+ local scene=self.sixPull
+ local actor=scene and scene.actor
+ if self.c.live(actor) then return actor,scene end
+end
+-- Six sale despedida hacia atrás por el tirón y luego queda de rodillas.
+function N:secretSixPose(kind)
+ local c=self.c
+ local actor,scene=self:sixClone()
+ if not actor then c.log('Final oculto: no hay copia de Six para '..kind);return end
+ local asset=self:asset(kind=='fall' and sixFall or sixKneel)
+ if not asset then c.log('Final oculto: falta la pose de Six '..kind);return end
+ local rotation=actor:K2_GetActorRotation()
+ if not scene.facingFixed then
+  -- La copia se giró 180 grados para el tirón; las demás poses miran al revés.
+  actor:K2_SetActorRotation({Pitch=rotation.Pitch,Yaw=(rotation.Yaw+180)%360,Roll=rotation.Roll},true)
+  scene.facingFixed=true
+ end
+ local visual=actor.SkeletalMeshComponent
+ visual:PlayAnimation(asset,kind~='fall')
+ visual:SetPlayRate(kind=='fall' and 1.25 or .8)
+ c.log('Final oculto: Six '..(kind=='fall' and 'cae hacia atras' or 'queda de rodillas'))
+ return tonumber(asset.SequenceLength) or 1.2
+end
+-- Mono, ya en el puente, se acerca a Six y la abraza.
+function N:secretHug(first)
+ local c=self.c
+ local actor=self:sixClone()
+ if not (actor and c.live(first)) then return end
+ self.monoClimb=nil
+ pcall(self.lift.release,self.lift)
+ self:setAnimRate(first,1)
+ local six=actor:K2_GetActorLocation()
+ local mono=first:K2_GetActorLocation()
+ local dx,dy=mono.X-six.X,mono.Y-six.Y
+ local length=math.sqrt(dx*dx+dy*dy)
+ if length<1 then dx,dy,length=1,0,1 end
+ local d=N.secretPose.hugDistance
+ local floorZ=(self.liftTarget and self.liftTarget.Z) or mono.Z
+ local at={X=six.X+dx/length*d,Y=six.Y+dy/length*d,Z=floorZ+2}
+ first:K2_SetActorLocation(at,false,{},true)
+ pcall(function() first.CharacterMovement:SetMovementMode(1,0) end)
+ first:K2_SetActorRotation({Pitch=0,Yaw=math.deg(math.atan(-dy,-dx)),Roll=0},true)
+ local pose=self:asset(monoHug)
+ if pose and c.live(first.mAnimationOverrideComponent) then
+  first.mAnimationOverrideComponent:PlayAnimationSequenceOverride2(pose,1,true,0,.35,.35)
+ end
+ c.log(string.format('Final oculto: Mono abraza a Six en %.0f %.0f %.0f',at.X,at.Y,at.Z))
+end
+function N:secretRelease(first)
+ self:holdSequences(first,false)
+ if self.c.live(first) then self:setAnimRate(first,1) end
+end
 -- Final oculto: abrazo compuesto con poses del juego (hasta tener la animación
 -- propia). Mono queda agotado de rodillas y Six se agacha pegada a él, de frente.
 local hugMono='/Game/Characters/Player/Animations/ANIM_Player_ExhaustedCrouchIdle.ANIM_Player_ExhaustedCrouchIdle'
@@ -365,7 +458,7 @@ function N:releaseCamera()
  end
  if c.live(shot.actor)then shot.actor:K2_DestroyActor()end
 end
-function N:pull(second)
+function N:pull(second,rate)
  local c=self.c
  local pull=self:asset(pullPath)
  local ledgeClass=StaticFindObject('/Script/Helios.LedgeClimbingInterface')
@@ -379,7 +472,7 @@ function N:pull(second)
  local now=c.UE.GetGameplayStatics():GetTimeSeconds(second)
  local origin=second:K2_GetActorLocation()
  local monoLength=tonumber(rise.SequenceLength)or 1.65
- local checked,lift=pcall(self.lift.prepare,self.lift,second,now,1.65)
+ local checked,lift=pcall(self.lift.prepare,self.lift,second,now,1.65/(rate or 1))
  if not checked then
   c.log('Puente final: error al comprobar el suelo de P2: '..tostring(lift))
   lift=nil
@@ -387,7 +480,7 @@ function N:pull(second)
  -- El final oculto necesita saber dónde queda el suelo del puente.
  self.liftTarget=lift and lift.plan and lift.plan.target or nil
  override:PlayAnimationSequenceOverride2(rise,nativeClimb and 2 or (lift and 0 or 2),false,0,.05,.1)
- self.sixPull={asset=pull,startedAt=now,nextSearch=0}
+ self.sixPull={asset=pull,startedAt=now,nextSearch=0,rate=rate}
  if nativeClimb then
   self.monoClimb={pawn=second,origin=origin,startedAt=now,lift=lift,
    deadline=math.min(1.2,math.max(.6,monoLength*.6)),latest=math.min(2,monoLength+.15)}
@@ -399,7 +492,7 @@ function N:pull(second)
    c.log('Puente final: error al iniciar la subida de P2: '..tostring(problem))
   end
  end
- return nativeClimb and math.max(monoLength,2.15)or 1.65
+ return (nativeClimb and math.max(monoLength,2.15)or 1.65)/(rate or 1)
 end
 function N:updateMonoClimb(pawn,now)
  local attempt=self.monoClimb
@@ -578,6 +671,21 @@ function N:api()
    self.cameraFailed=nil
    if not ok then c.log('Puente final: error al restaurar la camara: '..tostring(err))end
   end,
+  secretGrab=function(p)
+   local ok,err=pcall(self.secretGrab,self,p)
+   if not ok then c.log('Final oculto: error al sostener el agarre: '..tostring(err)) end
+  end,
+  secretPull=function(p)return self:secretPull(p)end,
+  secretSixPose=function(kind)
+   local ok,length=pcall(self.secretSixPose,self,kind)
+   if not ok then c.log('Final oculto: error en la pose de Six: '..tostring(length));return end
+   return length
+  end,
+  secretHug=function(p)
+   local ok,err=pcall(self.secretHug,self,p)
+   if not ok then c.log('Final oculto: error del abrazo: '..tostring(err)) end
+  end,
+  secretRelease=function(p)pcall(self.secretRelease,self,p)end,
   hug=function(p,now)
    if self.hugFailed then return end
    local ok,err=pcall(self.composeHug,self,p,now)

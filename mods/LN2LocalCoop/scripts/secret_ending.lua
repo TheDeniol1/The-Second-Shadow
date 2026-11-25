@@ -1,17 +1,18 @@
 -- Final oculto «Tú y yo».
 -- Condiciones: logro oculto «Ojos de más» desbloqueado, Jugar como Six activo
 -- y el último golpe a la caja de música lo da P2 como Dark Six. Dark Six
--- desaparece como siempre y, en el puente final, Six sube a Mono en vez de
--- soltarlo: plano cercano de los dos, fundido a negro, el texto del final y
--- los créditos del juego.
+-- desaparece como siempre y, en el puente final, Six no suelta a Mono: lo
+-- sostiene colgando unos segundos, tira de golpe y cae hacia atrás, queda de
+-- rodillas y Mono la abraza. Fundido a negro, el texto del final y los créditos.
 local Secret={};Secret.__index=Secret
 local tower='/Game/Levels/Transmission/PLVL_Transmission.'
 local betrayal='ANIM_Player_GapHelpSixBetrayal'
 local lastWake='ANIM_Player_WakeUpAfterLastHitMusicBox'
 Secret.achievement='ojos_de_mas'
 
--- Duraciones de cada plano, en segundos.
-Secret.timing={together=8,fade=3.5,card=5.5}
+-- Duraciones de cada plano, en segundos: agarre en suspenso, caída de Six
+-- hacia atrás tras el tirón, Six de rodillas, abrazo, fundido y texto.
+Secret.timing={grab=2.5,fall=1.6,kneel=1.2,together=7,fade=3.5,card=5.5}
 
 local function atGap(position)
  return math.abs(position.X+809)<180 and position.Y>=13750 and position.Y<=14300
@@ -37,7 +38,10 @@ end
 
 -- Olvida el final en curso; armed se conserva salvo que se pida lo contrario.
 function Secret:reset(disarm)
- if self.phase and self.phase~='done' then pcall(self.api.release) end
+ if self.phase and self.phase~='done' then
+  if self.api.secretRelease then pcall(self.api.secretRelease,self.first) end
+  pcall(self.api.release)
+ end
  self.phase,self.until_=nil,nil
  if disarm then self:setArmed(false);self.lastHitter=nil end
 end
@@ -103,19 +107,16 @@ function Secret:update(first,now,playing,paused)
  if not api.live(first) then return self.phase and 'hold' or nil end
  if paused then return self.phase and 'hold' or nil end
  local phase=self.phase
+ local timing=Secret.timing
  if not phase then
   if not first:GetFullName():find(tower,1,true) then return end
   if not (atGap(first:K2_GetActorLocation()) and api.animation(first)==betrayal) then return end
-  local ok,length=pcall(api.pull,first)
-  if not ok or not length then
-   api.log('Final oculto: no se pudo reproducir el rescate de Six: '..tostring(length))
-   self:reset(true)
-   return
-  end
+  -- Six agarra a Mono y lo deja colgando unos segundos antes de tirar.
   self.first=first
-  self.phase='pull'
-  self.until_=now+math.max(1.65,length)+.4
-  api.log('Final oculto: Six sujeta a Mono y lo sube')
+  self.phase='grab'
+  self.until_=now+timing.grab
+  if api.secretGrab then pcall(api.secretGrab,first) end
+  api.log('Final oculto: Six agarra a Mono y lo sostiene')
   api.frame(first,0)
   return 'hold'
  end
@@ -124,25 +125,54 @@ function Secret:update(first,now,playing,paused)
   self:reset(true)
   return
  end
- local timing=Secret.timing
- if phase=='pull' then
+ if phase=='grab' then
   api.frame(first,0)
+  if now>=self.until_ then
+   local pull=api.secretPull or api.pull
+   local ok,length=pcall(pull,first)
+   if not ok or not length then
+    api.log('Final oculto: no se pudo reproducir el rescate de Six: '..tostring(length))
+    self:reset(true)
+    return
+   end
+   self.phase='pull'
+   self.until_=now+math.max(1,length)+.1
+   api.log('Final oculto: Six tira de Mono con fuerza')
+  end
+ elseif phase=='pull' then
+  api.frame(first,0)
+  if now>=self.until_ then
+   local length=api.secretSixPose and api.secretSixPose('fall') or nil
+   self.phase='fall'
+   self.until_=now+(tonumber(length) and math.min(2.2,math.max(1,length/1.25)) or timing.fall)
+   if api.secretHug then pcall(api.secretHug,first) end
+   api.log('Final oculto: Six cae hacia atras con Mono en el puente')
+  end
+ elseif phase=='fall' then
+  api.frame(first,.1)
+  if now>=self.until_ then
+   if api.secretSixPose then api.secretSixPose('kneel') end
+   self.phase='kneel'
+   self.until_=now+timing.kneel
+  end
+ elseif phase=='kneel' then
+  api.frame(first,.15)
   if now>=self.until_ then
    self.phase='together'
    self.startedAt=now
    self.until_=now+timing.together
-   api.log('Final oculto: Six y Mono juntos en el puente')
+   api.log('Final oculto: Mono abraza a Six')
   end
  elseif phase=='together' then
-  if api.hug then pcall(api.hug,first,now) end
-  api.frame(first,math.min(1,(now-self.startedAt)/timing.together))
+  if api.hug and not api.secretHug then pcall(api.hug,first,now) end
+  api.frame(first,.15+.85*math.min(1,(now-self.startedAt)/timing.together))
   if now>=self.until_ then
    self.phase='fade'
    self.until_=now+timing.fade
    api.fade(timing.fade)
   end
  elseif phase=='fade' then
-  if api.hug then pcall(api.hug,first,now) end
+  if api.hug and not api.secretHug then pcall(api.hug,first,now) end
   api.frame(first,1)
   if now>=self.until_ then
    self.phase='card'
@@ -159,6 +189,7 @@ function Secret:update(first,now,playing,paused)
     api.log('Final oculto: creditos del juego')
    else
     api.log('Final oculto: no se pudieron abrir los creditos ('..tostring(shown)..'); vuelve el juego')
+    if api.secretRelease then pcall(api.secretRelease,first) end
     pcall(api.release)
    end
   end
