@@ -479,7 +479,7 @@ local secretEnding=SecretEnding.new({live=live,same=same,log=log,
  pull=function(p)return finaleApi.pull(p)end,
  secretGrab=function(p)finaleApi.secretGrab(p)end,
  secretPull=function(p)return finaleApi.secretPull(p)end,
- secretSixPose=function(kind)return finaleApi.secretSixPose(kind)end,
+ secretSixPose=function(kind,p)return finaleApi.secretSixPose(kind,p)end,
  secretHug=function(p)finaleApi.secretHug(p)end,
  secretRelease=function(p)finaleApi.secretRelease(p)end,
  frame=function(p,progress)finaleApi.frameRescue(p);finaleApi.pushIn(progress)end,
@@ -892,6 +892,7 @@ local function confirmCheckpoint(first)
  if spawning or restarting then log('Punto de control: el juego confirmo la reaparicion de P1') end
 end
 local requestCountdown=0
+local animationsListed=false
 LoopInGameThreadWithDelay(16,safe(function()
  local pc=p1()
  local now=pc and UE.GetGameplayStatics():GetRealTimeSeconds(pc)or os.clock()
@@ -910,6 +911,21 @@ LoopInGameThreadWithDelay(16,safe(function()
  end
  local soloFinale,lastHit=spawnNative:sixFinale(pc,playing)
  if soloFinale and state.enabled then retireDarkSix(pc,lastHit) end
+ if secretEnding.armed and playable and not animationsListed then
+  -- Una vez: guarda las animaciones de Six y Mono para afinar el abrazo.
+  animationsListed=true
+  local okList,listError=pcall(function()
+   local path=root and root..'animaciones.txt'
+   if not path then return end
+   local names=finaleNative:animationNames()
+   local f=io.open(path,'w')
+   if not f then return end
+   f:write(table.concat(names,'\n'),'\n')
+   f:close()
+   log('Final oculto: '..#names..' animaciones guardadas en animaciones.txt')
+  end)
+  if not okList then log('Final oculto: no se pudo listar las animaciones: '..tostring(listError)) end
+ end
  if secretEnding.armed then
   local okSecret,secretError=pcall(function()
    local statics=UE.GetGameplayStatics()

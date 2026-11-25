@@ -28,12 +28,18 @@ function Lift:plan(pawn,movement,radius)
  end
 end
 
-function Lift:prepare(pawn,now,duration,rate)
+function Lift:prepare(pawn,now,duration,rate,fallback)
  local c=self.c
  local movement,capsule,mesh=pawn.CharacterMovement,pawn.CapsuleComponent,pawn.Mesh
  local animation=c.live(mesh)and mesh:GetAnimInstance()or nil
  if not(c.live(movement)and c.live(capsule)and c.live(animation))then return end
- local plan=self:plan(pawn,movement,capsule:GetScaledCapsuleRadius())
+ local radius=capsule:GetScaledCapsuleRadius()
+ local plan=self:plan(pawn,movement,radius)
+ if not plan and fallback then
+  -- Suelo conocido del puente, por si la búsqueda falla desde esta postura.
+  plan=Path.new(pawn:K2_GetActorLocation(),fallback,radius)
+  if plan then c.log('Puente final: se usa el suelo conocido del puente para subir a P2')end
+ end
  if not plan then c.log('Puente final: no se encontro suelo libre para subir a P2');return end
  return {pawn=pawn,movement=movement,animation=animation,mesh=mesh,plan=plan,progress=0,
   movementTick=movement:IsComponentTickEnabled(),collision=pawn:GetActorEnableCollision(),

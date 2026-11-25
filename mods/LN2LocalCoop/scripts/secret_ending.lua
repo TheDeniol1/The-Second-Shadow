@@ -142,22 +142,22 @@ function Secret:update(first,now,playing,paused)
  elseif phase=='pull' then
   api.frame(first,0)
   if now>=self.until_ then
-   local length=api.secretSixPose and api.secretSixPose('fall') or nil
+   local length=api.secretSixPose and api.secretSixPose('fall',first) or nil
    self.phase='fall'
    self.until_=now+(tonumber(length) and math.min(2.2,math.max(1,length/1.25)) or timing.fall)
-   if api.secretHug then pcall(api.secretHug,first) end
    api.log('Final oculto: Six cae hacia atras con Mono en el puente')
   end
  elseif phase=='fall' then
   api.frame(first,.1)
   if now>=self.until_ then
-   if api.secretSixPose then api.secretSixPose('kneel') end
+   if api.secretSixPose then api.secretSixPose('kneel',first) end
    self.phase='kneel'
    self.until_=now+timing.kneel
   end
  elseif phase=='kneel' then
   api.frame(first,.15)
   if now>=self.until_ then
+   if api.secretHug then pcall(api.secretHug,first) end
    self.phase='together'
    self.startedAt=now
    self.until_=now+timing.together
