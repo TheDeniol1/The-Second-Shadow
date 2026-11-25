@@ -245,9 +245,18 @@ function N:composeHug(first,now)
  if not (c.live(first) and c.live(actor)) then return end
  local hug=self.hug
  if not hug or not c.same(hug.first,first) then
-  -- La subida terminó: nada más debe mover a Mono durante el abrazo.
+  -- La subida terminó: nada más debe mover a Mono durante el abrazo. Si la
+  -- secuencia del juego lo dejó colgando, se le pone de pie sobre el puente.
   self.monoClimb=nil
   pcall(self.lift.release,self.lift)
+  local floor=self.liftTarget
+  local standing=first:K2_GetActorLocation()
+  if floor and (standing.Z<floor.Z-20 or (standing.X-floor.X)^2+(standing.Y-floor.Y)^2>60^2) then
+   first.mAnimationOverrideComponent:StopAnimationSequenceOverride(true)
+   first:K2_SetActorLocation({X=floor.X,Y=floor.Y,Z=floor.Z+2},false,{},true)
+   pcall(function() first.CharacterMovement:SetMovementMode(1,0) end)
+   c.log(string.format('Final oculto: Mono colocado sobre el puente (estaba en %.0f %.0f %.0f)',standing.X,standing.Y,standing.Z))
+  end
   -- Animación propia (pak del mod) si está instalada; si no, poses del juego.
   local customMono,customSix=self:asset(N.customHug.mono),self:asset(N.customHug.six)
   local custom=customMono and customSix
@@ -375,6 +384,8 @@ function N:pull(second)
   c.log('Puente final: error al comprobar el suelo de P2: '..tostring(lift))
   lift=nil
  end
+ -- El final oculto necesita saber dónde queda el suelo del puente.
+ self.liftTarget=lift and lift.plan and lift.plan.target or nil
  override:PlayAnimationSequenceOverride2(rise,nativeClimb and 2 or (lift and 0 or 2),false,0,.05,.1)
  self.sixPull={asset=pull,startedAt=now,nextSearch=0}
  if nativeClimb then
