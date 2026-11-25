@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $editor = Join-Path $Engine 'Engine\Binaries\Win64\UE4Editor-Cmd.exe'
 $pakTool = Join-Path $Engine 'Engine\Binaries\Win64\UnrealPak.exe'
-foreach ($tool in @($editor, $pakTool)) { if (-not (Test-Path $tool)) { throw "No encuentro $tool. ¿Está instalado Unreal 4.24?" } }
+foreach ($tool in @($editor, $pakTool)) { if (-not (Test-Path $tool)) { throw "No encuentro $tool. Esta instalado Unreal 4.24?" } }
 
 # Proyecto limpio llamado Helios, para que las rutas cocinadas sean las del juego.
 $proyecto = Join-Path $Trabajo 'Helios'
