@@ -33,18 +33,27 @@ function Secret:reset(disarm)
 end
 
 -- Cada tick con el cooperativo activo: recuerda quién golpeó la caja de música.
+-- El juego reproduce a veces el golpe en P1 aunque el hacha la lleve P2, así que
+-- al empezar cada golpe cuenta quién sujeta el arma.
 function Secret:observe(first,second,coop,six)
  local api=self.api
  if not (coop and six) then return end
  if api.live(first) and not first:GetFullName():find(tower,1,true) then return end
  local mine=api.live(second) and api.animation(second) or nil
  local theirs=api.live(first) and api.animation(first) or nil
- if strike(mine) or mine==lastWake then
-  if self.lastHitter~=2 then api.log('Final oculto: P2 golpeo la caja de musica') end
-  self.lastHitter=2
- elseif strike(theirs) then
-  self.lastHitter=1
+ local swing=(strike(mine) or mine==lastWake) and 'P2:'..mine or (strike(theirs) and 'P1:'..theirs) or nil
+ if not swing then self.swing=nil;return end
+ if swing==self.swing then return end
+ self.swing=swing
+ local hitter=swing:sub(1,2)=='P2' and 2 or 1
+ if hitter==1 and api.holdsWeapon then
+  local okSecond,second_=pcall(api.holdsWeapon,second)
+  local okFirst,first_=pcall(api.holdsWeapon,first)
+  if okSecond and second_ and not (okFirst and first_) then hitter=2 end
  end
+ if hitter==2 and self.lastHitter~=2 then api.log('Final oculto: P2 golpeo la caja de musica') end
+ if hitter==1 and self.lastHitter~=1 then api.log('Final oculto: P1 golpeo la caja de musica') end
+ self.lastHitter=hitter
 end
 
 -- Dark Six acaba de desaparecer tras el último golpe.

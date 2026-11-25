@@ -32,6 +32,19 @@ second.anim='ANIM_Player_HittingMusicBoxVoidLong';p1:observe(first,second,true,t
 second.anim=nil;first.anim='ANIM_Player_HittingMusicBoxRecoil';p1:observe(first,second,true,true)
 assert(not p1:darkSixRetired(true),'a final hit by P1 keeps the normal ending')
 
+-- El juego reproduce el último golpe en P1 aunque el hacha la lleve P2.
+local carried,ccalls=setup(true)
+ccalls.held=second
+carried.api.holdsWeapon=function(p) return p==ccalls.held end
+first.anim='ANIM_Player_HittingMusicBoxRecoil';second.anim=nil;carried:observe(first,second,true,true)
+assert(carried.lastHitter==2,'a hit played on P1 while P2 holds the axe counts for Dark Six')
+first.anim=nil;carried:observe(first,second,true,true)
+ccalls.held=first;first.anim='ANIM_Player_HittingMusicBoxRecoil';carried:observe(first,second,true,true)
+assert(carried.lastHitter==1,'a hit while P1 holds the axe counts for P1')
+ccalls.held=second;carried:observe(first,second,true,true)
+assert(carried.lastHitter==1,'the hitter is decided when the swing starts')
+first.anim=nil
+
 local locked=setup(false)
 first.anim=nil;second.anim='ANIM_Player_HittingMusicBoxVoidLong';locked:observe(first,second,true,true)
 assert(not locked:darkSixRetired(true),'without the hidden achievement the ending stays normal')
