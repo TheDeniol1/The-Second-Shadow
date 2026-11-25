@@ -38,12 +38,9 @@ end
 -- ¿Sujeta este pawn un arma (el hacha de la Torre)?
 function N:holdsWeapon(pawn)
  local c=self.c
- local mesh=c.live(pawn) and pawn.Mesh or nil
- local anim=c.live(mesh) and mesh:GetAnimInstance() or nil
- local interface=c.live(anim) and anim.mCurrentlyActiveGrabInterface or nil
- local class=StaticFindObject('/Script/Helios.PlayerPickupInterface')
- if not (c.live(interface) and c.live(class) and interface:IsA(class)) then return false end
- local pickup=interface:GetCurrentlyHeldPickup()
+ if not c.live(pawn) then return false end
+ local interface=pawn:GetPlayerPickupInterface()
+ local pickup=c.live(interface) and interface:GetCurrentlyHeldPickup() or nil
  if not (c.live(pickup) and c.same(pickup:GetHolderIfHeld(),pawn)) then return false end
  return pickup:GetFullName():find('ItemWeapon',1,true)~=nil
 end
