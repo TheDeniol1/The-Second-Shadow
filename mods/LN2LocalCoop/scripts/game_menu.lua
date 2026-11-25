@@ -75,7 +75,7 @@ end
 
 function M:lang() return self.state.language=='en' and 'en' or 'es' end
 function M:t(key) return Registry.pick(TEXT[key],self:lang()) end
-function M:ctx() return {coop=self.state.enabled==true,six=self.state.playAsSix==true} end
+function M:ctx(ref) return {coop=self.state.enabled==true,six=self.state.playAsSix==true,ref=ref} end
 
 -------------------------------------------------------------------- Steam (solo lectura)
 function M:steamSystem()
@@ -171,8 +171,9 @@ function M:hookGameAchievements()
   local ok,err=pcall(RegisterHook,path,function(_,a,b)
    local name=nameOf(a)
    if not name then return end
-   local amount=amountOf and amountOf(b) or 1
-   local okE,errE=pcall(self.registry.event,self.registry,'game:'..name,amount,self:ctx())
+   local amount,ref=1,nil
+   if amountOf then amount,ref=amountOf(b) end
+   local okE,errE=pcall(self.registry.event,self.registry,'game:'..name,amount or 1,self:ctx(ref))
    if not okE then self.log('Logros: evento '..name..' '..tostring(errE)) end
    self.dirtyScreen=true
   end)
@@ -183,7 +184,10 @@ function M:hookGameAchievements()
   local ok,v=pcall(function() return b:get() end)
   return ok and tonumber(v) or 1
  end)
- hook('/Script/Helios.AchievementSystem:IncrementAchievementReference')
+ -- La referencia identifica qué coleccionable se recogió (cada niño fantasma tiene la suya).
+ hook('/Script/Helios.AchievementSystem:IncrementAchievementReference',function(b)
+  return 1,str(b)
+ end)
 end
 
 -------------------------------------------------------------------- Botón en el menú del juego

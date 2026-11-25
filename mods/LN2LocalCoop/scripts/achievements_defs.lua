@@ -11,15 +11,21 @@
 --  six     : true si solo cuenta jugando como Six.
 --  hidden  : true para ocultar nombre y descripción hasta desbloquearlo.
 --  unit    : 'minutes' muestra el progreso en minutos (target en segundos).
+--  unique  : true para contar cada coleccionable del juego una sola vez (usa la
+--            referencia que el juego manda con el evento, por ejemplo cada niño fantasma).
 --  icon    : PNG opcional en la carpeta scripts (por ejemplo 'mi_logro.png').
 --            Sin él se busca logro_<id>.png (por ejemplo logro_eco.png). Mientras
 --            el logro está bloqueado se muestra logro_propio.png (icono de bloqueado),
 --            que también se usa si falta el icono propio.
 --            Medida recomendada: 256x256 (o 128x128), fondo oscuro opaco.
--- v0.8.0 Alpha: la lista se publica vacía mientras se terminan los logros
--- propios. La pestaña del menú muestra «Próximamente». Los borradores siguen
--- abajo, comentados, para retomarlos.
-return {}
+-- Por ahora solo está activo el logro oculto que abre el final oculto. Los
+-- borradores siguen abajo, comentados, para retomarlos.
+return {
+ -- Abre el final oculto. No cambies su id: el final lo busca por él.
+ {id='ojos_de_mas',title={es='Ojos de más',en='Extra Eyes'},
+  desc={es='Atrapa a los 18 niños fantasma en cooperativo.',en='Catch all 18 Glitching Remains in co-op.'},
+  events={'game:FindAllPhantomKids'},target=18,unique=true,coop=true,hidden=true},
+}
 
 --[==[ Borradores para una versión futura:
 return {
@@ -45,9 +51,6 @@ return {
   desc={es='Completa un capítulo con P2 jugando como Six.',en='Complete a chapter with Player 2 playing as Six.'},
   events={'game:CompleteWilderness','game:CompleteSchool','game:CompleteHospital','game:CompletePaleCity','game:GameComplete'},
   coop=true,six=true,hidden=true},
- {id='ojos_de_mas',title={es='Ojos de más',en='Extra Eyes'},
-  desc={es='Atrapa 5 niños fantasma en cooperativo.',en='Catch 5 Glitching Remains in co-op.'},
-  events={'game:FindAllPhantomKids'},target=5,coop=true},
  {id='eco',title={es='Eco',en='Echo'},
   desc={es='Llama 10 veces en cooperativo.',en='Call out 10 times in co-op.'},
   events={'game:CallSix'},target=10,coop=true},

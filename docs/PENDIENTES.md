@@ -15,6 +15,6 @@ Aquí apunto los fallos que conozco y todavía no he resuelto, para que sepas qu
 ## Funciones previstas
 
 - **Modo en línea.** Está en desarrollo. [Cómo va a funcionar](EN-LINEA.md).
-- **Logros propios del mod.** La pestaña existe pero está vacía. Conseguir un logro desbloqueará un final adicional.
+- **Logros propios del mod.** Ya hay un logro oculto en la pestaña y desbloquea un final adicional, que todavía estoy preparando. El resto de logros llegará más adelante.
 - **Reasignar los botones del mando** desde F6.
 - **Audio independiente** para cada vista en pantalla dividida.

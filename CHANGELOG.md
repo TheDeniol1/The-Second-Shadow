@@ -1,3 +1,10 @@
+# Sin publicar
+
+## Logros
+
+- Primer logro propio del mod, oculto hasta que lo consigues. Desbloquea el final adicional, que llegará en una próxima versión.
+- Los coleccionables que cuentan para un logro se cuentan una sola vez aunque recargues la zona, y se guardan en `achievements.ini` en cuanto los recoges.
+
 # v0.8.0 Alpha
 
 Esta versión lleva el cooperativo más allá del Bosque y te recomiendo jugarla con **Jugar como Six**: P2 controla a la Six de la historia, con sus escenas y su ropa originales, y es la forma más fiel y estable de jugar el mod. Revisa los [fallos pendientes](docs/PENDIENTES.md) antes de empezar.
