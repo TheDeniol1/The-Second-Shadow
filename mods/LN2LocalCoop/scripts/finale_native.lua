@@ -233,6 +233,11 @@ end
 local hugMono='/Game/Characters/Player/Animations/ANIM_Player_ExhaustedCrouchIdle.ANIM_Player_ExhaustedCrouchIdle'
 local hugSix='/Game/Characters/Six/Animations/ANIM_Six_CrouchIdleShift.ANIM_Six_CrouchIdleShift'
 N.hugOffset={side=48,forward=34,meshYaw=-90}
+N.customHug={
+ mono='/Game/Mods/TheSecondShadow/ANIM_SecretHug_Mono.ANIM_SecretHug_Mono',
+ six='/Game/Mods/TheSecondShadow/ANIM_SecretHug_Six.ANIM_SecretHug_Six',
+ distance=30, -- igual que DISTANCE en tools/hug-animation/abrazo_blender.py
+}
 function N:composeHug(first,now)
  local c=self.c
  local scene=self.sixPull
@@ -243,8 +248,28 @@ function N:composeHug(first,now)
   -- La subida terminó: nada más debe mover a Mono durante el abrazo.
   self.monoClimb=nil
   pcall(self.lift.release,self.lift)
-  local monoPose,sixPose=self:asset(hugMono),self:asset(hugSix)
+  -- Animación propia (pak del mod) si está instalada; si no, poses del juego.
+  local customMono,customSix=self:asset(N.customHug.mono),self:asset(N.customHug.six)
+  local custom=customMono and customSix
+  local monoPose,sixPose=customMono or self:asset(hugMono),customSix or self:asset(hugSix)
+  if custom then c.log('Final oculto: usando la animacion propia del abrazo') end
   if not (monoPose and sixPose) then c.log('Final oculto: faltan las poses del abrazo');self.hug={first=first};return end
+  local visual=actor.SkeletalMeshComponent
+  if custom then
+   -- Las dos animaciones propias se hacen en Blender con Six enfrente de Mono,
+   -- a N.customHug.distance; aquí se repite esa colocación.
+   local mesh=first.Mesh
+   local at=mesh:K2_GetComponentLocation()
+   local rotation=mesh:K2_GetComponentRotation()
+   local forward=first:GetActorForwardVector()
+   local d=N.customHug.distance
+   actor:K2_SetActorLocationAndRotation({X=at.X+forward.X*d,Y=at.Y+forward.Y*d,Z=at.Z},
+    {Pitch=rotation.Pitch,Yaw=(rotation.Yaw+180)%360,Roll=rotation.Roll},false,{},true)
+   visual:PlayAnimation(sixPose,false)
+   visual:SetPlayRate(1)
+   self.hug={first=first,pose=monoPose,length=tonumber(monoPose.SequenceLength) or 8,once=true}
+   hug=self.hug
+  else
   local at=first:K2_GetActorLocation()
   local forward=first:GetActorForwardVector()
   local right={X=-forward.Y,Y=forward.X}
@@ -253,7 +278,6 @@ function N:composeHug(first,now)
    Z=first.Mesh:K2_GetComponentLocation().Z}
   local toMono=math.deg(math.atan(at.Y-sixAt.Y,at.X-sixAt.X))
   actor:K2_SetActorLocationAndRotation(sixAt,{Pitch=0,Yaw=toMono+o.meshYaw,Roll=0},false,{},true)
-  local visual=actor.SkeletalMeshComponent
   visual:PlayAnimation(sixPose,true)
   visual:SetPlayRate(.8)
   first:K2_SetActorRotation({Pitch=0,Yaw=(toMono+180)%360,Roll=0},true)
@@ -261,9 +285,10 @@ function N:composeHug(first,now)
   self.hug=hug
   c.log(string.format('Final oculto: abrazo compuesto; Six en %.0f %.0f %.0f mirando a %.0f',sixAt.X,sixAt.Y,sixAt.Z,toMono))
  end
+ end
  if hug.pose and (not hug.nextAt or now>=hug.nextAt) and c.live(first.mAnimationOverrideComponent) then
   first.mAnimationOverrideComponent:PlayAnimationSequenceOverride2(hug.pose,1,false,0,hug.nextAt and 0 or .25,.25)
-  hug.nextAt=now+math.max(.5,hug.length-.05)
+  hug.nextAt=hug.once and math.huge or now+math.max(.5,hug.length-.05)
  end
 end
 function N:clearHug()
