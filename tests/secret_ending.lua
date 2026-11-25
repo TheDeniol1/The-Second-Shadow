@@ -45,6 +45,12 @@ ccalls.held=second;carried:observe(first,second,true,true)
 assert(carried.lastHitter==1,'the hitter is decided when the swing starts')
 first.anim=nil
 
+local swinging=setup(true)
+swinging.api.p2Swing=function() return true end
+first.anim='ANIM_Player_HittingMusicBoxRecoil';swinging:observe(first,second,true,true)
+assert(swinging.lastHitter==2,'the P2 event swing signal credits Dark Six')
+first.anim=nil
+
 local locked=setup(false)
 first.anim=nil;second.anim='ANIM_Player_HittingMusicBoxVoidLong';locked:observe(first,second,true,true)
 assert(not locked:darkSixRetired(true),'without the hidden achievement the ending stays normal')

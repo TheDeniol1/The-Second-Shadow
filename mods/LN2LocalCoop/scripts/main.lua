@@ -471,6 +471,7 @@ local finale=Finale.new(finaleApi)
 local secretEnding=SecretEnding.new({live=live,same=same,log=log,
  animation=function(p)return finaleNative:animation(p)end,
  holdsWeapon=function(p)return finaleNative:holdsWeapon(p)end,
+ p2Swing=function()return events and events.box=='golpe' end,
  unlocked=function()
   local registry=gameMenu and gameMenu.registry
   return registry and registry:isUnlocked(SecretEnding.achievement) or false

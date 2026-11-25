@@ -46,6 +46,9 @@ function Secret:observe(first,second,coop,six)
  end
  local firstHolds,secondHolds=holds(first),holds(second)
  -- Último que llevaba el hacha él solo (el juego puede pasarla a P1 al golpear).
+ -- Misma señal que usan los eventos de P2: P2 golpea la caja con el hacha.
+ local okSwing,p2Swing=pcall(function() return api.p2Swing and api.p2Swing() end)
+ if okSwing and p2Swing then self.carrier=2;secondHolds=true end
  if secondHolds and not firstHolds then self.carrier=2
  elseif firstHolds and not secondHolds then self.carrier=1 end
  local mine=api.live(second) and api.animation(second) or nil
