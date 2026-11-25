@@ -68,19 +68,22 @@ hero.anim='ANIM_Player_GapHelpSixBetrayal'
 assert(scene:update(hero,11,true,false)=='hold' and calls.pull==1 and scene.phase=='pull','Six pulls Mono up instead of dropping him')
 assert(scene:update(hero,12,true,true)=='hold' and scene.phase=='pull','pausing holds the scene')
 scene:update(hero,13.5,true,false)
+calls.hugs=0;scene.api.hug=function() calls.hugs=calls.hugs+1 end
 assert(scene.phase=='together','after the pull both stay together on the bridge')
+scene:update(hero,14,true,false)
+assert(calls.hugs==1,'the together shot poses the hug')
 scene:update(hero,13.5+Secret.timing.together,true,false)
 assert(scene.phase=='fade' and calls.fade==1,'the shot fades to black')
 scene:update(hero,13.5+Secret.timing.together+Secret.timing.fade,true,false)
 assert(scene.phase=='card' and calls.card==1,'the ending text appears in the dark')
-scene:update(hero,30,true,false)
+scene:update(hero,40,true,false)
 assert(scene.phase=='done' and calls.credits==1 and not scene.armed and calls.release==0,'the game credits close the hidden ending')
 assert(calls.frame[#calls.frame]==1,'the camera finishes the push-in before the fade')
 
 local failing,fcalls=setup(true)
 fcalls.creditsWork=false
 failing.armed=true;hero.anim='ANIM_Player_GapHelpSixBetrayal'
-for t=1,40 do failing:update(hero,t,true,false) end
+for t=1,60 do failing:update(hero,t,true,false) end
 assert(failing.phase=='done' and fcalls.release==1,'if the credits cannot open the game gets its camera back')
 
 local menu,mcalls=setup(true)
@@ -108,7 +111,7 @@ replay:darkSixRetired(true)
 assert(disk==false and not replay.armed,'a later final hit by P1 clears the saved ending')
 disk=true
 local watched=stored()
-for t=1,40 do watched:update(hero,t,true,false) end
+for t=1,60 do watched:update(hero,t,true,false) end
 assert(watched.phase=='done' and disk==false,'watching the ending clears it')
 
 local away=setup(true)

@@ -228,6 +228,51 @@ function N:frameRescue(second)
   pc:SetViewTargetWithBlend(shot.actor,0,0,0,false)
  end
 end
+-- Final oculto: abrazo compuesto con poses del juego (hasta tener la animación
+-- propia). Mono queda agotado de rodillas y Six se agacha pegada a él, de frente.
+local hugMono='/Game/Characters/Player/Animations/ANIM_Player_ExhaustedCrouchIdle.ANIM_Player_ExhaustedCrouchIdle'
+local hugSix='/Game/Characters/Six/Animations/ANIM_Six_CrouchIdleShift.ANIM_Six_CrouchIdleShift'
+N.hugOffset={side=48,forward=34,meshYaw=-90}
+function N:composeHug(first,now)
+ local c=self.c
+ local scene=self.sixPull
+ local actor=scene and scene.actor
+ if not (c.live(first) and c.live(actor)) then return end
+ local hug=self.hug
+ if not hug or not c.same(hug.first,first) then
+  -- La subida terminó: nada más debe mover a Mono durante el abrazo.
+  self.monoClimb=nil
+  pcall(self.lift.release,self.lift)
+  local monoPose,sixPose=self:asset(hugMono),self:asset(hugSix)
+  if not (monoPose and sixPose) then c.log('Final oculto: faltan las poses del abrazo');self.hug={first=first};return end
+  local at=first:K2_GetActorLocation()
+  local forward=first:GetActorForwardVector()
+  local right={X=-forward.Y,Y=forward.X}
+  local o=N.hugOffset
+  local sixAt={X=at.X+right.X*o.side+forward.X*o.forward,Y=at.Y+right.Y*o.side+forward.Y*o.forward,
+   Z=first.Mesh:K2_GetComponentLocation().Z}
+  local toMono=math.deg(math.atan(at.Y-sixAt.Y,at.X-sixAt.X))
+  actor:K2_SetActorLocationAndRotation(sixAt,{Pitch=0,Yaw=toMono+o.meshYaw,Roll=0},false,{},true)
+  local visual=actor.SkeletalMeshComponent
+  visual:PlayAnimation(sixPose,true)
+  visual:SetPlayRate(.8)
+  first:K2_SetActorRotation({Pitch=0,Yaw=(toMono+180)%360,Roll=0},true)
+  hug={first=first,pose=monoPose,length=tonumber(monoPose.SequenceLength) or 3}
+  self.hug=hug
+  c.log(string.format('Final oculto: abrazo compuesto; Six en %.0f %.0f %.0f mirando a %.0f',sixAt.X,sixAt.Y,sixAt.Z,toMono))
+ end
+ if hug.pose and (not hug.nextAt or now>=hug.nextAt) and c.live(first.mAnimationOverrideComponent) then
+  first.mAnimationOverrideComponent:PlayAnimationSequenceOverride2(hug.pose,1,false,0,hug.nextAt and 0 or .25,.25)
+  hug.nextAt=now+math.max(.5,hug.length-.05)
+ end
+end
+function N:clearHug()
+ local hug=self.hug
+ self.hug=nil
+ if hug and hug.pose and self.c.live(hug.first) and self.c.live(hug.first.mAnimationOverrideComponent) then
+  pcall(function() hug.first.mAnimationOverrideComponent:StopAnimationSequenceOverride(true) end)
+ end
+end
 -- Final oculto: acerca poco a poco el plano del rescate a los dos personajes.
 function N:pushIn(progress)
  local shot=self.rescueCamera
@@ -497,6 +542,12 @@ function N:api()
    self.cameraFailed=nil
    if not ok then c.log('Puente final: error al restaurar la camara: '..tostring(err))end
   end,
+  hug=function(p,now)
+   if self.hugFailed then return end
+   local ok,err=pcall(self.composeHug,self,p,now)
+   if not ok then self.hugFailed=true;c.log('Final oculto: error del abrazo: '..tostring(err)) end
+  end,
+  clearHug=function()pcall(self.clearHug,self);self.hugFailed=nil end,
   pushIn=function(progress)
    if self.cameraFailed then return end
    local ok,err=pcall(self.pushIn,self,progress)

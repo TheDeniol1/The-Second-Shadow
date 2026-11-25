@@ -11,7 +11,7 @@ local lastWake='ANIM_Player_WakeUpAfterLastHitMusicBox'
 Secret.achievement='ojos_de_mas'
 
 -- Duraciones de cada plano, en segundos.
-Secret.timing={together=4.5,fade=3,card=5.5}
+Secret.timing={together=8,fade=3.5,card=5.5}
 
 local function atGap(position)
  return math.abs(position.X+809)<180 and position.Y>=13750 and position.Y<=14300
@@ -134,6 +134,7 @@ function Secret:update(first,now,playing,paused)
    api.log('Final oculto: Six y Mono juntos en el puente')
   end
  elseif phase=='together' then
+  if api.hug then pcall(api.hug,first,now) end
   api.frame(first,math.min(1,(now-self.startedAt)/timing.together))
   if now>=self.until_ then
    self.phase='fade'
@@ -141,6 +142,7 @@ function Secret:update(first,now,playing,paused)
    api.fade(timing.fade)
   end
  elseif phase=='fade' then
+  if api.hug then pcall(api.hug,first,now) end
   api.frame(first,1)
   if now>=self.until_ then
    self.phase='card'

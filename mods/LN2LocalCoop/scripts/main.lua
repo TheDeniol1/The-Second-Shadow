@@ -484,7 +484,8 @@ local secretEnding=SecretEnding.new({live=live,same=same,log=log,
    or 'Tú y yo\nAhora estamos juntos en esto')
  end,
  credits=function()return finaleNative:credits()end,
- release=function()finaleApi.releaseCamera();finaleApi.clearFade()end,
+ hug=function(p,now)finaleApi.hug(p,now)end,
+ release=function()finaleApi.clearHug();finaleApi.releaseCamera();finaleApi.clearFade()end,
  restore=function()
   local f=root and io.open(root..'final_oculto.ini','r')
   if not f then return false end
