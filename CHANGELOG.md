@@ -2,7 +2,11 @@
 
 ## Logros
 
-- Primer logro propio del mod, oculto hasta que lo consigues. Desbloquea el final adicional, que llegará en una próxima versión.
+- Primer logro propio del mod, oculto hasta que lo consigues. Desbloquea un final oculto.
+
+## Final oculto
+
+Con el logro oculto conseguido, jugando como Six, si P2 da el último golpe a la caja de música como Dark Six, Dark Six desaparece como siempre pero en el puente final Six no suelta a Mono: lo sube, se quedan juntos, la imagen funde a negro y empiezan los créditos.
 - Los coleccionables que cuentan para un logro se cuentan una sola vez aunque recargues la zona, y se guardan en `achievements.ini` en cuanto los recoges.
 
 # v0.8.0 Alpha

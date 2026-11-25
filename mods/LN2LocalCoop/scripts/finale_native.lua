@@ -209,7 +209,7 @@ function N:frameRescue(second)
   if not c.live(class)then return end
   local actor=pc:GetWorld():SpawnActor(class,position,rotation)
   if not c.live(actor)then return end
-  shot={actor=actor,pc=pc,original=pc:GetViewTarget()}
+  shot={actor=actor,pc=pc,original=pc:GetViewTarget(),position=position,focus=focus}
   self.rescueCamera=shot
   actor.CameraComponent.bConstrainAspectRatio=false
   actor.CameraComponent:SetFieldOfView(49)
@@ -218,6 +218,53 @@ function N:frameRescue(second)
  if c.same(pc,shot.pc) and not c.same(pc:GetViewTarget(),shot.actor)then
   pc:SetViewTargetWithBlend(shot.actor,0,0,0,false)
  end
+end
+-- Final oculto: acerca poco a poco el plano del rescate a los dos personajes.
+function N:pushIn(progress)
+ local shot=self.rescueCamera
+ if not (shot and self.c.live(shot.actor) and shot.position) then return end
+ local eased=progress*progress*(3-2*progress)
+ local from,to=shot.position,shot.focus
+ local amount=.38*eased
+ local at={X=from.X+(to.X-from.X)*amount,Y=from.Y+(to.Y-from.Y)*amount,Z=from.Z+(to.Z-from.Z)*amount-30*eased}
+ local rotation=self.c.UE.GetKismetMathLibrary():FindLookAtRotation(at,to)
+ shot.actor:K2_SetActorLocationAndRotation(at,rotation,false,{},true)
+end
+function N:fade(duration)
+ local pc=self.c.p1()
+ local manager=self.c.live(pc) and pc.PlayerCameraManager or nil
+ if not self.c.live(manager) then return end
+ manager:StartCameraFade(0,1,duration,{R=0,G=0,B=0,A=1},true,true)
+ self.faded=manager
+end
+function N:clearFade()
+ local manager=self.faded
+ self.faded=nil
+ if self.c.live(manager) then pcall(function() manager:StopCameraFade() end) end
+end
+function N:card(text)
+ local manager=FindFirstOf('WidgetManager')
+ local pc=self.c.p1()
+ local world=self.c.live(pc) and pc:GetWorld() or nil
+ if not (self.c.live(manager) and self.c.live(world)) then self.c.log(text);return end
+ manager:ShowHintWidget(world,FText(text),5)
+end
+local creditsPath='/Game/Blueprints/Widgets/Menues/WDG_CreditsScreen.WDG_CreditsScreen_C'
+function N:credits()
+ local c=self.c
+ local pc=c.p1()
+ if not c.live(pc) then return false end
+ local class=StaticFindObject(creditsPath)
+ if not c.live(class) then pcall(LoadAsset,creditsPath);class=StaticFindObject(creditsPath)end
+ local library=StaticFindObject('/Script/UMG.Default__WidgetBlueprintLibrary')
+ if not (c.live(class) and c.live(library)) then return false end
+ local widget=library:Create(pc,class,pc)
+ if not c.live(widget) then return false end
+ pcall(function() widget.AccessedFromMenu=false end)
+ widget:AddToViewport(100)
+ pcall(function() widget:SetKeyboardFocus() end)
+ self.creditsWidget=widget
+ return true
 end
 function N:releaseCamera()
  local shot=self.rescueCamera
@@ -441,6 +488,21 @@ function N:api()
    self.cameraFailed=nil
    if not ok then c.log('Puente final: error al restaurar la camara: '..tostring(err))end
   end,
+  pushIn=function(progress)
+   if self.cameraFailed then return end
+   local ok,err=pcall(self.pushIn,self,progress)
+   if not ok then c.log('Final oculto: error al acercar la camara: '..tostring(err)) end
+  end,
+  fade=function(duration)
+   local ok,err=pcall(self.fade,self,duration)
+   if not ok then c.log('Final oculto: error del fundido: '..tostring(err)) end
+  end,
+  clearFade=function()self:clearFade()end,
+  card=function(text)
+   local ok,err=pcall(self.card,self,text)
+   if not ok then c.log('Final oculto: error del texto: '..tostring(err)) end
+  end,
+  credits=function()return self:credits()end,
   stopSecond=function()c.driver:stop()end,parkSecond=function()c.driver:remove()end,
   reactPartner=function(caught,companion,role)
    local ok,clip=pcall(self.reactToBetrayal,self,caught,companion)
