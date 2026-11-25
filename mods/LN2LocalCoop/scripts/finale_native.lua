@@ -231,9 +231,12 @@ end
 -- Final oculto, por fases: Six agarra a Mono y lo sostiene unos segundos,
 -- tira de golpe, cae hacia atrás, queda de rodillas y Mono la abraza.
 local sixFall='/Game/Characters/Six/Animations/ANIM_Six_DragImpactBack.ANIM_Six_DragImpactBack'
-local sixKneel='/Game/Characters/Six/Animations/ANIM_Six_CrouchIdleShift.ANIM_Six_CrouchIdleShift'
-local monoHug='/Game/Characters/Player/Animations/ANIM_Player_CarryTeddyBearIdle.ANIM_Player_CarryTeddyBearIdle'
-N.secretPose={hugDistance=34,pullRate=1.6,
+-- No hay pose de rodillas: Six se sienta en cuclillas y Mono, agachado, la
+-- rodea con los brazos (la pose de cargar un objeto grande agachado).
+local sixKneel='/Game/Characters/Six/Animations/ANIM_Six_SitDownSquatStart.ANIM_Six_SitDownSquatStart'
+local sixKneelLoop='/Game/Characters/Six/Animations/ANIM_Six_SitDownSquatLoop.ANIM_Six_SitDownSquatLoop'
+local monoHug='/Game/Characters/Player/Animations/ANIM_Player_CarryMediumCylinderCrouchIdle.ANIM_Player_CarryMediumCylinderCrouchIdle'
+N.secretPose={hugDistance=30,pullRate=1.6,
  -- Suelo del puente medido en partidas anteriores (centro de la cápsula de Mono).
  floor={X=-809.3,Y=14103,Z=29186},
  -- Las animaciones normales de Six miran hacia +Y de la malla.
@@ -290,6 +293,8 @@ function N:secretGrab(first)
  local lift=self.lift:prepare(first,time,1.65/N.secretPose.pullRate,nil,N.secretPose.floor)
  if not lift then c.log('Final oculto: no hay camino para subir a Mono');return end
  lift.startedAt=time+3600
+ -- Al terminar la subida Mono necesita colisión para pisar el puente.
+ lift.collision=true
  self.lift:begin(lift)
  self.liftTarget=lift.plan.target
  c.log('Final oculto: Mono sujeto en '..where(lift.plan.origin)..'; subira a '..where(lift.plan.target))
@@ -305,7 +310,7 @@ function N:secretPull(first)
  local lift=self.lift.active
  if not lift then
   lift=self.lift:prepare(first,time,1.65/rate,nil,N.secretPose.floor)
-  if lift then self.lift:begin(lift) end
+  if lift then lift.collision=true;self.lift:begin(lift) end
  end
  if lift then
   lift.startedAt,lift.duration=time,1.65/rate
@@ -326,6 +331,7 @@ end
 -- Punto donde se ve a Six ahora (la pelvis), por si la animación la desplazó.
 function N:sixBody(actor)
  local visual=actor.SkeletalMeshComponent
+ local problem
  for _,bone in ipairs({'pelvis','Pelvis','Hips','hips','root','Root'})do
   local ok,at=pcall(function()
    local name=FName(bone)
@@ -333,8 +339,20 @@ function N:sixBody(actor)
    return visual:GetSocketLocation(name)
   end)
   if ok and at and at.X then return at,bone end
+  if not ok then problem=at end
+ end
+ if problem and not self.boneWarned then
+  self.boneWarned=true
+  self.c.log('Final oculto: no se pudo leer la pelvis de Six: '..tostring(problem))
  end
  return actor:K2_GetActorLocation(),'actor'
+end
+-- Altura de los pies sobre el puente (la cápsula de Mono apoyada en el suelo).
+function N:floorFeet(first)
+ local floor=self.liftTarget or N.secretPose.floor
+ local half=44
+ pcall(function() half=first.CapsuleComponent:GetScaledCapsuleHalfHeight() end)
+ return floor.Z-half
 end
 -- Six sale despedida hacia atrás por el tirón y luego queda de rodillas,
 -- siempre de cara a Mono y desde donde se la ve, sin saltos.
@@ -345,15 +363,16 @@ function N:secretSixPose(kind,first)
  local asset=self:asset(kind=='fall' and sixFall or sixKneel)
  if not asset then c.log('Final oculto: falta la pose de Six '..kind);return end
  local body,bone=self:sixBody(actor)
- local base=actor:K2_GetActorLocation()
- local at={X=body.X,Y=body.Y,Z=base.Z}
+ -- La copia nace donde estaba la malla de la secuencia, que va por debajo del
+ -- suelo; las poses normales necesitan los pies sobre el puente.
+ local at={X=body.X,Y=body.Y,Z=c.live(first) and self:floorFeet(first) or actor:K2_GetActorLocation().Z}
  local mono=c.live(first) and first:K2_GetActorLocation() or self.liftTarget or N.secretPose.floor
  local yaw=yawTo(at,mono)+N.secretPose.sixYaw
  actor:K2_SetActorLocationAndRotation(at,{Pitch=0,Yaw=yaw,Roll=0},false,{},true)
  scene.facingFixed=true
  local visual=actor.SkeletalMeshComponent
- visual:PlayAnimation(asset,kind~='fall')
- visual:SetPlayRate(kind=='fall' and 1.25 or .8)
+ visual:PlayAnimation(asset,false)
+ visual:SetPlayRate(kind=='fall' and 1.25 or 1)
  c.log(string.format('Final oculto: Six %s en %s (%s), mirando a Mono en %s',
   kind=='fall' and 'cae hacia atras' or 'queda de rodillas',where(at),bone,where(mono)))
  return tonumber(asset.SequenceLength) or 1.2
@@ -399,6 +418,11 @@ function N:secretHug(first)
  self:place(first,at)
  first:K2_SetActorRotation({Pitch=0,Yaw=yawTo(at,six),Roll=0},true)
  actor:K2_SetActorRotation({Pitch=0,Yaw=yawTo(six,at)+N.secretPose.sixYaw,Roll=0},true)
+ local loop=self:asset(sixKneelLoop)
+ if loop then
+  actor.SkeletalMeshComponent:PlayAnimation(loop,true)
+  actor.SkeletalMeshComponent:SetPlayRate(1)
+ end
  local pose=self:asset(monoHug)
  if pose and c.live(first.mAnimationOverrideComponent) then
   first.mAnimationOverrideComponent:PlayAnimationSequenceOverride2(pose,1,true,0,.35,.35)
