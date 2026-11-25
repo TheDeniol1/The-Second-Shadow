@@ -246,12 +246,12 @@ function N:composeHug(first,now)
  local hug=self.hug
  if not hug or not c.same(hug.first,first) then
   -- La subida terminó: nada más debe mover a Mono durante el abrazo. Si la
-  -- secuencia del juego lo dejó colgando, se le pone de pie sobre el puente.
+  -- secuencia del juego lo dejó colgando o a medio subir, se le pone de pie sobre el puente.
   self.monoClimb=nil
   pcall(self.lift.release,self.lift)
   local floor=self.liftTarget
   local standing=first:K2_GetActorLocation()
-  if floor and (standing.Z<floor.Z-20 or (standing.X-floor.X)^2+(standing.Y-floor.Y)^2>60^2) then
+  if floor and (math.abs(standing.Z-floor.Z)>15 or (standing.X-floor.X)^2+(standing.Y-floor.Y)^2>60^2) then
    first.mAnimationOverrideComponent:StopAnimationSequenceOverride(true)
    first:K2_SetActorLocation({X=floor.X,Y=floor.Y,Z=floor.Z+2},false,{},true)
    pcall(function() first.CharacterMovement:SetMovementMode(1,0) end)
