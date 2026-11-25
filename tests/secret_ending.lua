@@ -90,6 +90,21 @@ scene:update(hero,60,true,false)
 assert(scene.phase=='done' and calls.credits==1 and not scene.armed and calls.release==0,'the game credits close the hidden ending')
 assert(calls.frame[#calls.frame]==1,'the camera finishes the push-in before the fade')
 
+-- Con la escena propia instalada se reproduce entera, sin el tirón compuesto.
+local custom,ccalls=setup(true)
+custom.armed=true
+ccalls.pulls=0
+custom.api.secretGrab=function() return 20 end
+custom.api.secretPull=function() ccalls.pulls=ccalls.pulls+1 return 1 end
+hero.anim='ANIM_Player_GapHelpSixBetrayal'
+assert(custom:update(hero,100,true,false)=='hold' and custom.phase=='scene','the custom scene plays when the pak is installed')
+custom:update(hero,110,true,false)
+assert(custom.phase=='scene' and ccalls.pulls==0 and math.abs(ccalls.frame[#ccalls.frame]-.5)<1e-9,'the camera pushes in during the custom scene')
+custom:update(hero,120,true,false)
+assert(custom.phase=='fade' and ccalls.fade==1,'the custom scene ends in the fade to black')
+custom:update(hero,200,true,false);custom:update(hero,210,true,false)
+assert(custom.phase=='done' and ccalls.credits==1,'then the text and the credits')
+
 local failing,fcalls=setup(true)
 fcalls.creditsWork=false
 failing.armed=true;hero.anim='ANIM_Player_GapHelpSixBetrayal'

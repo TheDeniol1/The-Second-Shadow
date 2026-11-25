@@ -113,11 +113,21 @@ function Secret:update(first,now,playing,paused)
   if not (atGap(first:K2_GetActorLocation()) and api.animation(first)==betrayal) then return end
   -- Six agarra a Mono y lo deja colgando unos segundos antes de tirar.
   self.first=first
+  api.frame(first,0)
+  local ok,scene=false,nil
+  if api.secretGrab then ok,scene=pcall(api.secretGrab,first) end
+  if ok and tonumber(scene) and scene>0 then
+   -- Escena propia instalada: se reproduce entera y luego viene el fundido.
+   self.phase='scene'
+   self.startedAt=now
+   self.length=scene
+   self.until_=now+scene
+   api.log('Final oculto: escena propia del puente')
+   return 'hold'
+  end
   self.phase='grab'
   self.until_=now+timing.grab
-  if api.secretGrab then pcall(api.secretGrab,first) end
   api.log('Final oculto: Six agarra a Mono y lo sostiene')
-  api.frame(first,0)
   return 'hold'
  end
  if not api.same(first,self.first) then
@@ -125,7 +135,14 @@ function Secret:update(first,now,playing,paused)
   self:reset(true)
   return
  end
- if phase=='grab' then
+ if phase=='scene' then
+  api.frame(first,math.min(1,(now-self.startedAt)/self.length))
+  if now>=self.until_ then
+   self.phase='fade'
+   self.until_=now+timing.fade
+   api.fade(timing.fade)
+  end
+ elseif phase=='grab' then
   api.frame(first,0)
   if now>=self.until_ then
    local pull=api.secretPull or api.pull

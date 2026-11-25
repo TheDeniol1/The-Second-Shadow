@@ -477,7 +477,7 @@ local secretEnding=SecretEnding.new({live=live,same=same,log=log,
   return registry and registry:isUnlocked(SecretEnding.achievement) or false
  end,
  pull=function(p)return finaleApi.pull(p)end,
- secretGrab=function(p)finaleApi.secretGrab(p)end,
+ secretGrab=function(p)return finaleApi.secretGrab(p)end,
  secretPull=function(p)return finaleApi.secretPull(p)end,
  secretSixPose=function(kind,p)return finaleApi.secretSixPose(kind,p)end,
  secretHug=function(p)finaleApi.secretHug(p)end,
