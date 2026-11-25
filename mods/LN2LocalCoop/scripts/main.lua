@@ -484,7 +484,20 @@ local secretEnding=SecretEnding.new({live=live,same=same,log=log,
    or 'Tú y yo\nAhora estamos juntos en esto')
  end,
  credits=function()return finaleNative:credits()end,
- release=function()finaleApi.releaseCamera();finaleApi.clearFade()end})
+ release=function()finaleApi.releaseCamera();finaleApi.clearFade()end,
+ restore=function()
+  local f=root and io.open(root..'final_oculto.ini','r')
+  if not f then return false end
+  local text=f:read('*a') or ''
+  f:close()
+  return text:find('armado=1',1,true)~=nil
+ end,
+ store=function(on)
+  local f=root and io.open(root..'final_oculto.ini','w')
+  if not f then return end
+  f:write('# The Second Shadow - final oculto pendiente del puente.\narmado='..(on and '1' or '0')..'\n')
+  f:close()
+ end})
 local television=TVScene.new({live=live,same=same,world=world,log=log,
  enabled=function()return state.enabled end,
  pair=function()

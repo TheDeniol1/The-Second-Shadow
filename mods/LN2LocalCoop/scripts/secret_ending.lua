@@ -23,13 +23,23 @@ local function strike(name)
  return type(name)=='string' and name:find('HittingMusicBox',1,true)~=nil
 end
 
-function Secret.new(api)return setmetatable({api=api},Secret)end
+function Secret.new(api)
+ local self=setmetatable({api=api},Secret)
+ -- El final queda guardado: se puede cerrar el juego y volver al puente.
+ local ok,saved=pcall(function() return api.restore and api.restore() end)
+ self.armed=ok and saved==true or nil
+ return self
+end
+function Secret:setArmed(on)
+ self.armed=on and true or nil
+ if self.api.store then pcall(self.api.store,on==true) end
+end
 
 -- Olvida el final en curso; armed se conserva salvo que se pida lo contrario.
 function Secret:reset(disarm)
  if self.phase and self.phase~='done' then pcall(self.api.release) end
  self.phase,self.until_=nil,nil
- if disarm then self.armed=nil;self.lastHitter=nil end
+ if disarm then self:setArmed(false);self.lastHitter=nil end
 end
 
 -- Cada tick con el cooperativo activo: recuerda quién golpeó la caja de música.
@@ -67,13 +77,13 @@ end
 -- Dark Six acaba de desaparecer tras el último golpe.
 function Secret:darkSixRetired(six)
  local api=self.api
- if self.armed then return true end
- if not six then return false end
+ if not six then return self.armed==true end
  local unlocked=api.unlocked()
  if self.lastHitter==2 and unlocked then
-  self.armed=true
+  self:setArmed(true)
   api.log('Final oculto: condiciones cumplidas; Six no soltara a Mono en el puente')
  else
+  if self.lastHitter then self:setArmed(false) end
   api.log('Final oculto: no se activa (ultimo golpe de P'..tostring(self.lastHitter or '?')
    ..', logro '..(unlocked and 'conseguido' or 'pendiente')..')')
  end
@@ -86,8 +96,8 @@ function Secret:update(first,now,playing,paused)
  local api=self.api
  if not self.armed then return end
  if not playing then
-  -- Volver al menú cancela el final de esta partida.
-  if self.phase then self:reset(true) end
+  -- Volver al menú corta la escena; el final sigue guardado para reintentar.
+  if self.phase then self:reset(false) end
   return
  end
  if not api.live(first) then return self.phase and 'hold' or nil end
@@ -141,7 +151,7 @@ function Secret:update(first,now,playing,paused)
  elseif phase=='card' then
   if now>=self.until_ then
    self.phase='done'
-   self.armed=nil
+   self:setArmed(false)
    local ok,shown=pcall(api.credits)
    if ok and shown then
     api.log('Final oculto: creditos del juego')

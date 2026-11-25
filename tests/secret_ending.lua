@@ -86,7 +86,30 @@ assert(failing.phase=='done' and fcalls.release==1,'if the credits cannot open t
 local menu,mcalls=setup(true)
 menu.armed=true;menu:update(hero,1,true,false)
 menu:update(hero,2,false,false)
-assert(not menu.armed and not menu.phase and mcalls.release==1,'returning to the menu cancels the scene and disarms it')
+assert(menu.armed and not menu.phase and mcalls.release==1,'returning to the menu stops the scene but keeps the ending for a retry')
+
+-- El final queda guardado entre sesiones y se borra al verlo.
+local disk=false
+local function stored()
+ local api={live=function(v) return v~=nil end,same=function(a,b) return a==b end,log=function() end,
+  animation=function(p) return p.anim end,unlocked=function() return true end,
+  pull=function() return 2 end,frame=function() end,fade=function() end,card=function() end,
+  credits=function() return true end,release=function() end,
+  restore=function() return disk end,store=function(on) disk=on end}
+ return Secret.new(api)
+end
+local saving=stored()
+second.anim='ANIM_Player_HittingMusicBoxVoidLong';saving:observe(first,second,true,true);second.anim=nil
+saving:darkSixRetired(true)
+assert(disk==true and stored().armed,'an armed ending survives closing the game')
+local replay=stored()
+first.anim='ANIM_Player_HittingMusicBoxRecoil';replay:observe(first,second,true,true);first.anim=nil
+replay:darkSixRetired(true)
+assert(disk==false and not replay.armed,'a later final hit by P1 clears the saved ending')
+disk=true
+local watched=stored()
+for t=1,40 do watched:update(hero,t,true,false) end
+assert(watched.phase=='done' and disk==false,'watching the ending clears it')
 
 local away=setup(true)
 away.armed=true
