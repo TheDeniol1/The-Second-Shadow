@@ -492,6 +492,12 @@ function N:secretMeasure(first)
   local r,l=mesh.RelativeRotation,mesh.RelativeLocation
   c.log(string.format('Final oculto: malla de Mono relativa %.1f %.1f %.1f giro %.1f',l.X,l.Y,l.Z,r.Yaw))
  end)
+ -- Esqueletos del juego: el proyecto de Unreal debe crearlos en estas rutas.
+ pcall(function()
+  local pull,rise=self:asset(pullPath),self:asset(risePath)
+  c.log('Final oculto: esqueleto de Six '..(pull and pull.Skeleton:GetFullName() or '?')
+   ..'; esqueleto de Mono '..(rise and rise.Skeleton:GetFullName() or '?'))
+ end)
  pcall(function()
   local six=self:findSix(first,self:asset(pullPath))
   if six then

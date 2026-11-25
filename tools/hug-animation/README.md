@@ -1,43 +1,60 @@
-# Animación propia del abrazo (final oculto)
+# Escena propia del puente (final oculto)
 
-El final oculto usa dos animaciones propias si están instaladas:
+El final oculto reproduce una escena propia si encuentra estos dos clips en un pak:
 
-- `/Game/Mods/TheSecondShadow/ANIM_SecretHug_Mono` (esqueleto de Mono)
-- `/Game/Mods/TheSecondShadow/ANIM_SecretHug_Six` (esqueleto de Six)
+- `/Game/Mods/TheSecondShadow/ANIM_SecretScene_Mono` (esqueleto de Mono)
+- `/Game/Mods/TheSecondShadow/ANIM_SecretScene_Six` (esqueleto de Six)
 
-Si no las encuentra, el mod compone el abrazo con poses del juego. Cuando las encuentra, en `UE4SS.log` aparece `Final oculto: usando la animacion propia del abrazo`.
+Los dos clips se animan juntos en Blender, sobre el mismo origen, y cubren toda la
+escena: el agarre, el tirón, la caída de Six, Six de rodillas y el abrazo. El mod
+oculta a Mono y a la Six del juego, crea dos copias con sus mallas en el origen
+y reproduce los clips a la vez. Si el pak no está, usa el reemplazo con poses del juego.
 
-El juego usa **Unreal Engine 4.24** (lo indica UE4SS al arrancar).
+## Origen de la escena
 
-## 1. Sacar los modelos con FModel
+El origen es el punto del suelo del puente justo encima de donde Mono cuelga.
+Las dos copias se colocan con el giro `N.customScene.yaw` de `finale_native.lua`.
+Al empezar la escena, el mod escribe en `UE4SS.log` las medidas que necesita el
+script de Blender:
 
-1. Instala [FModel](https://fmodel.app) y en *Settings* elige la carpeta `Little Nightmares II\Helios\Content\Paks` y la versión **UE4.24**.
-2. En *Settings → Models*, elige el formato de exportación **ActorX (psk/psa)**.
-3. Exporta `Helios/Content/Characters/Player/SKM_Player02` (Mono) y `Helios/Content/Characters/Six/SKM_Six` (Six).
-4. Abre cada malla en FModel y apunta qué **Skeleton** usa. Mono usa `/Game/Characters/Player/SKEL_Player`. Para Six, apunta la ruta que salga, porque la necesitas en el paso 3.
+- `Final oculto: medidas cuelga=X Y Z capsula=media/radio suelo=Z borde=Y`
+- `Final oculto: esqueleto de Six ...; esqueleto de Mono ...`
+- `Final oculto: Six de la secuencia en X Y Z giro G`
+
+## 1. Exportar del juego con FModel
+
+1. En FModel elige `Little Nightmares II\Helios\Content\Paks` y la versión **UE4.24**.
+2. En *Settings → Models*, mallas en **ActorX (psk)** y animaciones en **psa**.
+3. Clic derecho en `Helios/Content/Characters/Six/Animations` y en
+   `Helios/Content/Characters/Player/Animations` → *Save Folder's Packages Animations*.
+4. Guarda las mallas de Mono y Six (`SKM_…`) con *Save Model*.
 
 ## 2. Animar en Blender
 
-1. Instala el addon de importación PSK/PSA (por ejemplo, *io_import_scene_unreal_psa_psk*) e importa los dos `.psk`.
-2. Comprueba que los armatures se llamen `SKM_Player02` y `SKM_Six`. Si no, cambia `MONO` y `SIX` al principio de `abrazo_blender.py`.
-3. Guarda el `.blend`, abre `abrazo_blender.py` en el editor de texto de Blender y pulsa **Run Script**.
-4. Revisa la consola (*Window → Toggle System Console*). El script dice qué huesos no encontró y lista los nombres reales. Si alguno no aparece, añade su nombre en `PARTS`.
-5. Reproduce la animación. Si un brazo gira al revés, cambia el signo de ese valor en `POSES` y vuelve a ejecutar el script. A partir de aquí puedes retocar las claves a mano.
-6. El script exporta `ANIM_SecretHug_Mono.fbx` y `ANIM_SecretHug_Six.fbx` junto al `.blend`.
+La escena se arma con clips del juego como base (por ejemplo `ANIM_Six_GapHelpPullUp`
+con `ANIM_Player_GapHelpPulledUp` para el tirón) y se retoca a mano donde no hay
+animación del juego, como el abrazo. Se exportan:
 
-Six se coloca enfrente de Mono, a `DISTANCE` cm. Si cambias esa distancia, cambia también `N.customHug.distance` en `finale_native.lua`. La escena juntos dura 8 s (`Secret.timing.together` en `secret_ending.lua`), y el script anima 7,6 s.
+- `SKM_Mono.fbx` y `SKM_Six.fbx`: las mallas, para crear los esqueletos en Unreal.
+- `ANIM_SecretScene_Mono.fbx` y `ANIM_SecretScene_Six.fbx`: los clips.
 
-## 3. Cocinar con Unreal 4.24
+`abrazo_blender.py` es el primer borrador, solo del abrazo.
 
-1. Crea un proyecto vacío de UE 4.24 llamado **Helios**. El nombre importa, porque así las rutas cocinadas coinciden con las del juego.
-2. Importa `SKM_Player02.psk` (o un FBX de la malla) en `Content/Characters/Player/`, para que el esqueleto quede en `/Game/Characters/Player/SKEL_Player`. Haz lo mismo con Six en la ruta del esqueleto que apuntaste en el paso 1.
-3. Importa los dos FBX de animación en `Content/Mods/TheSecondShadow/`, cada uno con su esqueleto, y deja los nombres `ANIM_SecretHug_Mono` y `ANIM_SecretHug_Six`.
-4. Ejecuta *File → Cook Content for Windows*.
-5. De `Saved/Cooked/WindowsNoEditor/Helios/Content/Mods/TheSecondShadow/` copia solo los `.uasset`/`.uexp` de las dos animaciones. No incluyas los esqueletos ni las mallas falsas, porque el juego ya tiene los suyos.
+## 3. Cocinar e instalar (Unreal 4.24)
 
-## 4. Empaquetar e instalar
+Con Unreal 4.24.3 instalado, en PowerShell:
 
-1. Arma esta estructura de carpetas: `Helios/Content/Mods/TheSecondShadow/` con los archivos cocinados.
-2. Crea el pak con UnrealPak de UE 4.24, por ejemplo: `UnrealPak.exe TheSecondShadow_P.pak -create=lista.txt`, donde `lista.txt` asocia cada archivo con `../../../Helios/Content/Mods/TheSecondShadow/<archivo>`.
-3. Copia `TheSecondShadow_P.pak` a `Little Nightmares II\Helios\Content\Paks\~mods\` (crea la carpeta si no existe).
-4. Juega el final oculto y busca en el log `usando la animacion propia del abrazo`.
+```powershell
+.\cocinar.ps1 -Fbx "C:\ruta\a\los\fbx"
+```
+
+El script crea un proyecto vacío llamado **Helios** (así las rutas cocinadas
+coinciden con las del juego) y luego hace tres pasos:
+
+1. Importa las mallas y mueve sus esqueletos a las rutas del juego.
+2. Importa los clips, cocina para Windows y crea `TheSecondShadow_P.pak`.
+3. Copia el pak en `Little Nightmares II\Helios\Content\Paks\~mods\`.
+
+Las rutas de los esqueletos se cambian en `unreal/importar.json`.
+
+Para comprobarlo, juega el final oculto y busca `escena propia` en `UE4SS.log`.
