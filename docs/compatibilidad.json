@@ -32,5 +32,6 @@
   "bully_head_gameplay_test": "user_confirmed_p2_picks_own_bully_head_and_keeps_it_after_checkpoint",
   "squeeze_gap_gameplay_test": "user_confirmed_narrow_gap_answers_p2",
   "known_issue": "bully_push_still_knocks_down_p1_fix_untested_in_game",
-  "p1_keyboard_recovery_gameplay_test": "user_confirmed_p1_keyboard_recovery_after_loading"
+  "p1_keyboard_recovery_gameplay_test": "user_confirmed_p1_keyboard_recovery_after_loading",
+  "six_mode_campaign_test": "user_confirmed_play_as_six_from_basement_rescue_in_wilderness_to_six_kidnapping_in_school"
 }

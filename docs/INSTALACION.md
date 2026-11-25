@@ -30,7 +30,7 @@ Al instalar desde cero empiezas con los Eventos de P2 y el agarre en el aire act
 
 Abre la edición original. **F7** invita o retira a P2; **F6** abre el menú. Para la introducción conjunta, activa P2 antes de comenzar una partida nueva. Si quieres jugar como Six, que es lo que te recomiendo, actívalo en **F6 → 4 → 5** desde el menú principal, antes de cargar la partida. Consulta CONTROLES.md en el ZIP o la guía de controles del repositorio.
 
-En partida confirmé el Bosque completo en cooperativo, el comienzo de la Escuela, el uso de teclado y mando y que los ajustes se conservan al reiniciar. El resto de la campaña sigue en pruebas; los fallos conocidos están en PENDIENTES.md.
+En partida jugué con Jugar como Six desde que Mono rescata a Six del sótano en el Bosque hasta que la secuestran en la Escuela. También confirmé el uso de teclado y mando y que los ajustes se conservan al reiniciar. El resto de la campaña sigue en pruebas; los fallos conocidos están en PENDIENTES.md.
 
 ## Instalaciones existentes y actualizaciones
 

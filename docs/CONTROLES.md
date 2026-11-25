@@ -99,7 +99,7 @@ En el pantano, ambos deben agacharse bajo cobertura para que el Cazador no los d
 
 ### Logros
 
-El menú principal y el de pausa del juego tienen un botón **Logros**. La pestaña de Steam muestra tus logros del juego, sin desbloquear ninguno. La pestaña de The Second Shadow está vacía en esta versión: estoy preparando los logros propios del mod, y conseguir uno desbloqueará un final adicional.
+El menú principal y el de pausa del juego tienen un botón **Logros**. La pestaña de Steam muestra tus logros del juego, sin desbloquear ninguno. La pestaña de The Second Shadow está vacía en esta versión: estoy preparando los logros propios del mod, y conseguir uno en específico desbloqueará un final adicional.
 
 
 ## Los ajustes que dejé por defecto

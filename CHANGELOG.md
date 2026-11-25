@@ -32,7 +32,7 @@ P2 toma el control de la Six de la historia mientras acompaña a Mono y pasa a D
 
 ## Menú del juego
 
-Nuevo botón **Logros** en el menú principal y en el de pausa. La pestaña de Steam muestra tus logros; la de The Second Shadow está vacía por ahora. Estoy preparando los logros propios del mod, y conseguir uno desbloqueará un final adicional.
+Nuevo botón **Logros** en el menú principal y en el de pausa. La pestaña de Steam muestra tus logros; la de The Second Shadow está vacía por ahora. Estoy preparando los logros propios del mod, y conseguir uno en específico desbloqueará un final adicional.
 
 ## En desarrollo
 

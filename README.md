@@ -4,7 +4,7 @@ Soy **TheDalex** y este es mi mod para jugar **Little Nightmares II en cooperati
 
 **v0.8.0 Alpha · Windows x64 · Edición original de Steam · MIT**
 
-Sigue siendo una alpha. Ya probé el Bosque en cooperativo, el inicio de la Escuela con una cabeza de abusón para cada jugador, los controles con teclado y mando y que los ajustes se guardan. El resto de la campaña sigue en pruebas. [Fallos que tengo anotados](docs/PENDIENTES.md).
+Sigue siendo una alpha. Ya probé Jugar como Six desde que Mono rescata a Six del sótano en el Bosque hasta que la secuestran en la Escuela, con una cabeza de abusón para cada jugador. También probé los controles con teclado y mando y que los ajustes se guardan. El resto de la campaña sigue en pruebas. [Fallos que tengo anotados](docs/PENDIENTES.md).
 
 ## Jugar como Six
 
