@@ -17,7 +17,7 @@ function M.new(opts)
  opts=opts or {}
  local self=setmetatable({log=opts.log or function()end,path=opts.path,io=opts.io or io,clock=opts.clock or os.time,
   notify=opts.notify or function()end,defs=opts.defs or require('achievements_defs'),
-  progress={},unlocked={},times={},byId={},byEvent={},revision=0,dirty=false},M)
+  progress={},unlocked={},times={},refs={},byId={},byEvent={},revision=0,dirty=false},M)
  for _,d in ipairs(self.defs)do
   assert(type(d.id)=='string' and d.id:match('^[%w_]+$'),'id de logro no válido')
   assert(not self.byId[d.id],'id de logro repetido: '..d.id)
@@ -39,7 +39,11 @@ function M:load()
  if not f then return end
  for line in f:lines()do
   local id,u,p,t=line:match('^([%w_]+)=([01])|([%d%.]+)|(%d*)')
-  if id then
+  local refId,list=line:match('^refs%.([%w_]+)=(.*)$')
+  if refId then
+   self.refs[refId]=self.refs[refId] or {}
+   for ref in list:gmatch('[^,]+')do self.refs[refId][ref]=true end
+  elseif id then
    self.unlocked[id]=u=='1'
    self.progress[id]=tonumber(p) or 0
    self.times[id]=tonumber(t)
@@ -59,6 +63,13 @@ function M:save()
    f:write(string.format('%s=%s|%s|%s\n',d.id,self.unlocked[d.id] and '1' or '0',
     tostring(math.floor((p or 0)*10+.5)/10),tostring(self.times[d.id] or '')))
   end
+  local seen=self.refs[d.id]
+  if seen and next(seen) then
+   local list={}
+   for ref in pairs(seen)do list[#list+1]=ref end
+   table.sort(list)
+   f:write('refs.'..d.id..'='..table.concat(list,',')..'\n')
+  end
  end
  f:close()
  self.dirty=false
@@ -76,7 +87,19 @@ function M:unlock(d)
  return true
 end
 
--- name: evento; amount: cuánto suma (1 por defecto); ctx: {coop=bool,six=bool}.
+-- Referencia del juego (por ejemplo, qué niño fantasma) apta para achievements.ini.
+local function cleanRef(ref)
+ if ref==nil then return nil end
+ ref=tostring(ref):gsub('[^%w_%-%.]','')
+ if ref=='' or ref=='None' then return nil end
+ return ref
+end
+M.cleanRef=cleanRef
+
+function M:isUnlocked(id) return self.unlocked[id]==true end
+
+-- name: evento; amount: cuánto suma (1 por defecto); ctx: {coop=bool,six=bool,ref=nombre}.
+-- Los logros con unique=true cuentan cada ctx.ref una sola vez, aunque se repita la zona.
 function M:event(name,amount,ctx)
  local list=self.byEvent[name]
  if not list then return 0 end
@@ -85,15 +108,25 @@ function M:event(name,amount,ctx)
  if amount<=0 then return 0 end
  local unlockedNow=0
  for _,d in ipairs(list)do
-  if not self.unlocked[d.id] and (not d.coop or ctx.coop) and (not d.six or ctx.six) then
+  local ref=d.unique and cleanRef(ctx.ref) or nil
+  local repeated=ref and self.refs[d.id] and self.refs[d.id][ref]
+  if not self.unlocked[d.id] and not repeated and (not d.coop or ctx.coop) and (not d.six or ctx.six) then
    local before=self.progress[d.id] or 0
-   local value=math.min(before+amount,self:target(d))
+   local step=amount
+   if ref then
+    self.refs[d.id]=self.refs[d.id] or {}
+    self.refs[d.id][ref]=true
+    step=1
+   end
+   local value=math.min(before+step,self:target(d))
    self.progress[d.id]=value
    if value>=self:target(d) then
     if self:unlock(d) then unlockedNow=unlockedNow+1 end
    else
     self.dirty=true
     if math.floor(value)~=math.floor(before) then self.revision=self.revision+1 end
+    -- Un coleccionable recogido no vuelve a aparecer: se guarda al momento.
+    if ref then self:save() end
    end
   end
  end

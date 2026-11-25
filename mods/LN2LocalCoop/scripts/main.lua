@@ -42,6 +42,7 @@ local TowerAxe=require('tower_axe_transition')
 local FinalBridge=require('final_bridge')
 local Finale=require('finale_scene')
 local FinaleNative=require('finale_native')
+local SecretEnding=require('secret_ending')
 local ledgeRescue,primaryRecovery
 local state={enabled=false,menu=false,menuPage='home',preset=1,cameraMode=1,split=false,showStatus=true,status='Desactivado',appearance={},tp={effects=true},eventRedirect=false}
 local function log(s) print('[LN2LocalCoop] '..s..'\n') end
@@ -180,8 +181,9 @@ local hats=Hats.new(live,same,state.appearance,log)
 state.hats=hats
 state.playAsSix=state.appearance.six=='1'
 -- Pestaña Logros en el menú del propio juego (Steam solo lectura + logros del mod).
+local gameMenu
 local okAchievements,errAchievements=pcall(function()
- require('game_menu').install({state=state,log=log,live=live,root=root,p1=p1,focused=function()return native:foreground()end,
+ gameMenu=require('game_menu').install({state=state,log=log,live=live,root=root,p1=p1,focused=function()return native:foreground()end,
   keyDown=function(key)local code=RescueInput.code(key)return code and native.api and native.api.key_down and native.api.key_down(code)or false end,
   playing=function()local pc=p1();local pawn=pc and pc.Pawn
    return live(pawn) and pawn:GetFullName():find('BP_PlayerPawn_C',1,true)~=nil and not UE.GetGameplayStatics():IsGamePaused(pc)end})
@@ -464,7 +466,44 @@ local finaleNative=FinaleNative.new({UE=UE,p1=p1,live=live,same=same,world=world
  clear=function(p,from,to)return tpNative:clear(p,nil,from,to)end,
  playPose=function(...)return cinematicNative:playLocalPose(...)end,
  stopPose=function(pawn,clip)cinematicNative:stopLocalPose(pawn,clip,true)end})
-local finale=Finale.new(finaleNative:api())
+local finaleApi=finaleNative:api()
+local finale=Finale.new(finaleApi)
+local secretEnding=SecretEnding.new({live=live,same=same,log=log,
+ animation=function(p)return finaleNative:animation(p)end,
+ holdsWeapon=function(p)return finaleNative:holdsWeapon(p)end,
+ p2Swing=function()return events and events.box=='golpe' end,
+ unlocked=function()
+  local registry=gameMenu and gameMenu.registry
+  return registry and registry:isUnlocked(SecretEnding.achievement) or false
+ end,
+ pull=function(p)return finaleApi.pull(p)end,
+ secretGrab=function(p)return finaleApi.secretGrab(p)end,
+ secretPull=function(p)return finaleApi.secretPull(p)end,
+ secretSixPose=function(kind,p)return finaleApi.secretSixPose(kind,p)end,
+ secretHug=function(p)finaleApi.secretHug(p)end,
+ secretRelease=function(p)finaleApi.secretRelease(p)end,
+ frame=function(p,progress)finaleApi.frameRescue(p);finaleApi.pushIn(progress)end,
+ fade=function(duration)finaleApi.fade(duration)end,
+ card=function()
+  finaleApi.card(state.language=='en' and 'You and Me\nWe are in this together now'
+   or 'Tú y yo\nAhora estamos juntos en esto')
+ end,
+ credits=function()return finaleNative:credits()end,
+ hug=function(p,now)finaleApi.hug(p,now)end,
+ release=function()finaleApi.clearHug();finaleApi.releaseCamera();finaleApi.clearFade()end,
+ restore=function()
+  local f=root and io.open(root..'final_oculto.ini','r')
+  if not f then return false end
+  local text=f:read('*a') or ''
+  f:close()
+  return text:find('armado=1',1,true)~=nil
+ end,
+ store=function(on)
+  local f=root and io.open(root..'final_oculto.ini','w')
+  if not f then return end
+  f:write('# The Second Shadow - final oculto pendiente del puente.\narmado='..(on and '1' or '0')..'\n')
+  f:close()
+ end})
 local television=TVScene.new({live=live,same=same,world=world,log=log,
  enabled=function()return state.enabled end,
  pair=function()
@@ -527,6 +566,8 @@ local function disable(reason)
  state.enabled=false; setSplit(p1(),false); clearSeparation();gamepad:restore(); death:reset();spawn:disable(); driver:stop(); driver:remove(); status(reason or 'Desactivado')
 end
 local function retireDarkSix(pc,lastHit)
+ local okSecret,secretError=pcall(secretEnding.darkSixRetired,secretEnding,state.playAsSix)
+ if not okSecret then log('Final oculto: '..tostring(secretError)) end
  if lastHit then
   local visual=sixAppearance:darkVisual(driver.pawn)
   if pc and world(visual,pc.Pawn) then
@@ -851,6 +892,7 @@ local function confirmCheckpoint(first)
  if spawning or restarting then log('Punto de control: el juego confirmo la reaparicion de P1') end
 end
 local requestCountdown=0
+local animationsListed=false
 LoopInGameThreadWithDelay(16,safe(function()
  local pc=p1()
  local now=pc and UE.GetGameplayStatics():GetRealTimeSeconds(pc)or os.clock()
@@ -863,8 +905,38 @@ LoopInGameThreadWithDelay(16,safe(function()
  local firstPath=pc and live(pc.Pawn) and pc.Pawn:GetFullName()
  local playable=firstPath and firstPath:find('BP_PlayerPawn_C',1,true)
  local playing=spawnNative:playingGame(pc)
+ if state.enabled and playable then
+  local okSecret,secretError=pcall(secretEnding.observe,secretEnding,pc.Pawn,driver.pawn,true,state.playAsSix)
+  if not okSecret then log('Final oculto: '..tostring(secretError)) end
+ end
  local soloFinale,lastHit=spawnNative:sixFinale(pc,playing)
  if soloFinale and state.enabled then retireDarkSix(pc,lastHit) end
+ if secretEnding.armed and playable and not animationsListed then
+  -- Una vez: guarda las animaciones de Six y Mono para afinar el abrazo.
+  animationsListed=true
+  local okList,listError=pcall(function()
+   local path=root and root..'animaciones.txt'
+   if not path then return end
+   local names=finaleNative:animationNames()
+   local f=io.open(path,'w')
+   if not f then return end
+   f:write(table.concat(names,'\n'),'\n')
+   f:close()
+   log('Final oculto: '..#names..' animaciones guardadas en animaciones.txt')
+  end)
+  if not okList then log('Final oculto: no se pudo listar las animaciones: '..tostring(listError)) end
+ end
+ if secretEnding.armed then
+  local okSecret,secretError=pcall(function()
+   local statics=UE.GetGameplayStatics()
+   return secretEnding:update(playable and pc.Pawn or nil,playing and statics:GetTimeSeconds(pc) or 0,
+    playing,playing and statics:IsGamePaused(pc))
+  end)
+  if not okSecret then
+   log('Final oculto: error, se cancela: '..tostring(secretError))
+   pcall(secretEnding.reset,secretEnding,true)
+  end
+ end
  if finale.route and not playing and spawnNative:gameState(pc)==4 then finale:reset()end
  local trackFinale=state.enabled and not state.playAsSix and (finale.route or (playable and live(driver.pawn)))
  local ending=finale:update(playable and pc.Pawn or nil,driver.pawn,

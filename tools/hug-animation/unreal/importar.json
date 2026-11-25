@@ -1,0 +1,18 @@
+{
+  "_nota": "Rutas de los esqueletos del juego: las escribe el mod en UE4SS.log ('esqueleto de Six ...; esqueleto de Mono ...').",
+  "destino": "/Game/Mods/TheSecondShadow",
+  "personajes": [
+    {
+      "malla": "SKM_Mono.fbx",
+      "esqueleto": "/Game/Characters/Player/SKEL_Player",
+      "animacion": "ANIM_SecretScene_Mono.fbx",
+      "nombre": "ANIM_SecretScene_Mono"
+    },
+    {
+      "malla": "SKM_Six.fbx",
+      "esqueleto": "/Game/Characters/Six/SKEL_Six",
+      "animacion": "ANIM_SecretScene_Six.fbx",
+      "nombre": "ANIM_SecretScene_Six"
+    }
+  ]
+}

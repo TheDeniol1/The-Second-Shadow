@@ -1047,6 +1047,7 @@ dofile('tests/coop_bully_rules.lua')
 dofile('tests/music_box_transition.lua')
 dofile('tests/tower_axe_transition.lua')
 dofile('tests/achievements.lua')
+dofile('tests/secret_ending.lua')
 local marker=require('camera_marker')
 local frame={left=100,top=0,right=1266,bottom=768}
 assert(not marker.place(frame,683,384,nil,nil,1),'visible player has no arrow')

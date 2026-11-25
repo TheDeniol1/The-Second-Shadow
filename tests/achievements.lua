@@ -44,7 +44,30 @@ remove(tmp)
 local ok=pcall(Registry.new,{defs={{id='a'},{id='a'}}})
 assert(not ok,'duplicate ids are rejected')
 local real=Registry.new({path=nil})
-assert(#real.defs==0 and next(real.byEvent)==nil,'v0.8.0 Alpha ships the mod tab empty while the achievements are in the works')
+local eyes=real.byId.ojos_de_mas
+assert(#real.defs==1 and eyes and eyes.hidden and eyes.unique and eyes.coop and real:target(eyes)==18,
+ 'the only published achievement is the hidden Glitching Remains one that opens the hidden ending')
+assert(real:rows('es')[1].title=='Logro oculto','the hidden ending achievement stays secret until unlocked')
+
+-- Niños fantasma: cada referencia cuenta una vez, también tras reiniciar.
+remove(tmp)
+local kidsDefs={{id='ojos_de_mas',title={es='Ojos',en='Eyes'},desc={es='D',en='D'},
+ events={'game:FindAllPhantomKids'},target=3,unique=true,coop=true,hidden=true}}
+local function kidsRegistry() return Registry.new({defs=kidsDefs,path=tmp,io=memio,clock=function()return 7 end}) end
+local k=kidsRegistry()
+k:event('game:FindAllPhantomKids',1,{coop=true,ref='PK_Wilderness_01'})
+k:event('game:FindAllPhantomKids',1,{coop=true,ref='PK_Wilderness_01'})
+k:event('game:FindAllPhantomKids',1,{coop=false,ref='PK_School_01'})
+assert(k.progress.ojos_de_mas==1,'a repeated Glitching Remain counts once and solo catches do not count')
+k:event('game:FindAllPhantomKids',1,{coop=true,ref='PK School 02!'})
+local k2=kidsRegistry()
+assert(k2.progress.ojos_de_mas==2 and k2.refs.ojos_de_mas.PK_Wilderness_01 and k2.refs.ojos_de_mas.PKSchool02,
+ 'collected references survive a restart')
+k2:event('game:FindAllPhantomKids',1,{coop=true,ref='PK_Wilderness_01'})
+assert(not k2:isUnlocked('ojos_de_mas'),'a reloaded zone cannot repeat a remain after a restart')
+k2:event('game:FindAllPhantomKids',1,{coop=true,ref='PK_Hospital_01'})
+assert(k2:isUnlocked('ojos_de_mas') and k2:rows('es')[1].title=='Ojos','the last remain unlocks and reveals the achievement')
+remove(tmp)
 
 -- Steam: solo lectura, con textos opcionales y logros ocultos.
 local engine={

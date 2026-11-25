@@ -35,6 +35,15 @@ function N:animation(pawn)
   return asset:GetFullName():match('%.([^%.]+)$')
  end
 end
+-- ¿Sujeta este pawn un arma (el hacha de la Torre)?
+function N:holdsWeapon(pawn)
+ local c=self.c
+ if not c.live(pawn) then return false end
+ local interface=pawn:GetPlayerPickupInterface()
+ local pickup=c.live(interface) and interface:GetCurrentlyHeldPickup() or nil
+ if not (c.live(pickup) and c.same(pickup:GetHolderIfHeld(),pawn)) then return false end
+ return pickup:GetFullName():find('ItemWeapon',1,true)~=nil
+end
 function N:findSix(second,pull)
  local c=self.c
  local at=second:K2_GetActorLocation()
@@ -209,7 +218,7 @@ function N:frameRescue(second)
   if not c.live(class)then return end
   local actor=pc:GetWorld():SpawnActor(class,position,rotation)
   if not c.live(actor)then return end
-  shot={actor=actor,pc=pc,original=pc:GetViewTarget()}
+  shot={actor=actor,pc=pc,original=pc:GetViewTarget(),position=position,focus=focus}
   self.rescueCamera=shot
   actor.CameraComponent.bConstrainAspectRatio=false
   actor.CameraComponent:SetFieldOfView(49)
@@ -218,6 +227,509 @@ function N:frameRescue(second)
  if c.same(pc,shot.pc) and not c.same(pc:GetViewTarget(),shot.actor)then
   pc:SetViewTargetWithBlend(shot.actor,0,0,0,false)
  end
+end
+-- Final oculto, por fases: Six agarra a Mono y lo sostiene unos segundos,
+-- tira de golpe, cae hacia atrás, queda de rodillas y Mono la abraza.
+local sixFall='/Game/Characters/Six/Animations/ANIM_Six_DragImpactBack.ANIM_Six_DragImpactBack'
+-- No hay pose de rodillas: Six se sienta en cuclillas y Mono, agachado, la
+-- rodea con los brazos (la pose de cargar un objeto grande agachado).
+local sixKneel='/Game/Characters/Six/Animations/ANIM_Six_SitDownSquatStart.ANIM_Six_SitDownSquatStart'
+local sixKneelLoop='/Game/Characters/Six/Animations/ANIM_Six_SitDownSquatLoop.ANIM_Six_SitDownSquatLoop'
+local monoHug='/Game/Characters/Player/Animations/ANIM_Player_CarryMediumCylinderCrouchIdle.ANIM_Player_CarryMediumCylinderCrouchIdle'
+N.secretPose={hugDistance=30,pullRate=1.6,
+ -- Suelo del puente medido en partidas anteriores (centro de la cápsula de Mono).
+ floor={X=-809.3,Y=14103,Z=29186},
+ -- Las animaciones normales de Six miran hacia +Y de la malla.
+ sixYaw=-90,
+ -- Plano cercano del abrazo, en unidades del juego.
+ shot={side=300,back=60,up=85,lookUp=34}}
+local function now(c,pawn)return c.UE.GetGameplayStatics():GetTimeSeconds(pawn)end
+local function yawTo(from,to)return math.deg(math.atan(to.Y-from.Y,to.X-from.X))end
+function N:setAnimRate(pawn,rate)
+ local mesh=self.c.live(pawn) and pawn.Mesh or nil
+ if self.c.live(mesh) then mesh.GlobalAnimRateScale=rate end
+end
+-- Congela la secuencia del juego (Six sujetando a Mono) mientras dura el agarre.
+function N:holdSequences(first,on)
+ local c=self.c
+ if on then
+  self.heldSequences=self.heldSequences or {}
+  for _,actor in ipairs(FindAllOf('LevelSequenceActor')or{})do
+   local player=c.live(actor) and actor.SequencePlayer or nil
+   if c.live(player) and c.world(actor,first) and player:IsPlaying() then
+    player:Pause()
+    self.heldSequences[#self.heldSequences+1]=player
+    c.log('Final oculto: secuencia en pausa '..actor:GetFullName())
+   end
+  end
+ else
+  for _,player in ipairs(self.heldSequences or {})do
+   if c.live(player) then pcall(function() player:Play() end) end
+  end
+  self.heldSequences=nil
+ end
+end
+-- El juego puede tener a Mono enganchado a Six o a la cornisa; se suelta
+-- antes de moverlo para que la subida y el abrazo no lo devuelvan a la mano.
+function N:detach(pawn)
+ local c=self.c
+ local ok,parent=pcall(function() return pawn:GetAttachParentActor() end)
+ if ok and c.live(parent) then
+  c.log('Final oculto: Mono estaba unido a '..parent:GetFullName()..'; se suelta')
+  pcall(function() pawn:K2_DetachFromActor(1,1,1) end)
+ end
+end
+local function where(p)return string.format('%.0f %.0f %.0f',p.X,p.Y,p.Z)end
+-- Agarre: Mono queda sujeto en el punto donde Six lo atrapó. La subida se
+-- calcula ya desde ahí y espera, congelada, hasta el tirón.
+function N:secretGrab(first)
+ local c=self.c
+ self.monoClimb=nil
+ pcall(self.lift.release,self.lift)
+ self:detach(first)
+ self:holdSequences(first,true)
+ self:setAnimRate(first,0)
+ local time=now(c,first)
+ local lift=self.lift:prepare(first,time,1.65/N.secretPose.pullRate,nil,N.secretPose.floor)
+ if lift then self.liftTarget=lift.plan.target end
+ local measured,anchor=pcall(self.secretMeasure,self,first)
+ if not measured then c.log('Final oculto: error al medir el puente: '..tostring(anchor));anchor=nil end
+ if anchor then
+  local started,length=pcall(self.sceneStart,self,first,anchor)
+  if not started then
+   c.log('Final oculto: error de la escena propia: '..tostring(length))
+   pcall(self.sceneClear,self)
+  elseif length then
+   -- Con la escena propia Mono queda oculto y sujeto en su sitio, sin subir.
+   if lift then
+    lift.startedAt,lift.collision=time+3600,true
+    self.lift:begin(lift)
+   end
+   return length
+  end
+ end
+ if not lift then c.log('Final oculto: no hay camino para subir a Mono');return end
+ lift.startedAt=time+3600
+ -- Al terminar la subida Mono necesita colisión para pisar el puente.
+ lift.collision=true
+ self.lift:begin(lift)
+ self.liftTarget=lift.plan.target
+ c.log('Final oculto: Mono sujeto en '..where(lift.plan.origin)..'; subira a '..where(lift.plan.target))
+end
+-- Tirón: Mono sube de golpe por el camino ya calculado y Six tira de él.
+function N:secretPull(first)
+ local c=self.c
+ local rate=N.secretPose.pullRate
+ local pull,rise=self:asset(pullPath),self:asset(risePath)
+ local override=first.mAnimationOverrideComponent
+ if not (pull and rise and c.live(override)) then c.log('Final oculto: faltan las animaciones del tiron');return end
+ local time=now(c,first)
+ local lift=self.lift.active
+ if not lift then
+  lift=self.lift:prepare(first,time,1.65/rate,nil,N.secretPose.floor)
+  if lift then lift.collision=true;self.lift:begin(lift) end
+ end
+ if lift then
+  lift.startedAt,lift.duration=time,1.65/rate
+  self.liftTarget=lift.plan.target
+ else
+  c.log('Final oculto: Mono no tiene camino de subida')
+ end
+ self:setAnimRate(first,rate)
+ override:PlayAnimationSequenceOverride2(rise,0,false,0,.05,.1)
+ self.sixPull={asset=pull,startedAt=time,nextSearch=0,rate=rate}
+ return 1.65/rate+.1
+end
+function N:sixClone()
+ local scene=self.sixPull
+ local actor=scene and scene.actor
+ if self.c.live(actor) then return actor,scene end
+end
+-- Punto donde se ve a Six ahora (la pelvis), por si la animación la desplazó.
+function N:sixBody(actor)
+ local visual=actor.SkeletalMeshComponent
+ local problem
+ for _,bone in ipairs({'pelvis','Pelvis','Hips','hips','root','Root'})do
+  local ok,at=pcall(function()
+   local name=FName(bone)
+   if visual:GetBoneIndex(name)<0 then return end
+   return visual:GetSocketLocation(name)
+  end)
+  if ok and at and at.X then return at,bone end
+  if not ok then problem=at end
+ end
+ if problem and not self.boneWarned then
+  self.boneWarned=true
+  self.c.log('Final oculto: no se pudo leer la pelvis de Six: '..tostring(problem))
+ end
+ return actor:K2_GetActorLocation(),'actor'
+end
+-- Altura de los pies sobre el puente (la cápsula de Mono apoyada en el suelo).
+function N:floorFeet(first)
+ local floor=self.liftTarget or N.secretPose.floor
+ local half=44
+ pcall(function() half=first.CapsuleComponent:GetScaledCapsuleHalfHeight() end)
+ return floor.Z-half
+end
+-- Six sale despedida hacia atrás por el tirón y luego queda de rodillas,
+-- siempre de cara a Mono y desde donde se la ve, sin saltos.
+function N:secretSixPose(kind,first)
+ local c=self.c
+ local actor,scene=self:sixClone()
+ if not actor then c.log('Final oculto: no hay copia de Six para '..kind);return end
+ local asset=self:asset(kind=='fall' and sixFall or sixKneel)
+ if not asset then c.log('Final oculto: falta la pose de Six '..kind);return end
+ local body,bone=self:sixBody(actor)
+ -- La copia nace donde estaba la malla de la secuencia, que va por debajo del
+ -- suelo; las poses normales necesitan los pies sobre el puente.
+ local at={X=body.X,Y=body.Y,Z=c.live(first) and self:floorFeet(first) or actor:K2_GetActorLocation().Z}
+ local mono=c.live(first) and first:K2_GetActorLocation() or self.liftTarget or N.secretPose.floor
+ local yaw=yawTo(at,mono)+N.secretPose.sixYaw
+ actor:K2_SetActorLocationAndRotation(at,{Pitch=0,Yaw=yaw,Roll=0},false,{},true)
+ scene.facingFixed=true
+ local visual=actor.SkeletalMeshComponent
+ visual:PlayAnimation(asset,false)
+ visual:SetPlayRate(kind=='fall' and 1.25 or 1)
+ c.log(string.format('Final oculto: Six %s en %s (%s), mirando a Mono en %s',
+  kind=='fall' and 'cae hacia atras' or 'queda de rodillas',where(at),bone,where(mono)))
+ return tonumber(asset.SequenceLength) or 1.2
+end
+function N:place(pawn,at)
+ local c=self.c
+ self:detach(pawn)
+ pawn:K2_SetActorLocation(at,false,{},true)
+ local got=pawn:K2_GetActorLocation()
+ if (got.X-at.X)^2+(got.Y-at.Y)^2+(got.Z-at.Z)^2>25 then
+  c.log('Final oculto: Mono no se movio a '..where(at)..' (sigue en '..where(got)..')')
+ end
+end
+-- Plano cercano de los dos, desde el mismo lado que la cámara del rescate.
+function N:secretShot(six,mono)
+ local shot=self.rescueCamera
+ if not (shot and self.c.live(shot.actor)) then return end
+ local cfg=N.secretPose.shot
+ local focus={X=(six.X+mono.X)/2,Y=(six.Y+mono.Y)/2,Z=math.max(six.Z,mono.Z)+cfg.lookUp-40}
+ local side=(shot.position.X<focus.X) and -1 or 1
+ shot.focus=focus
+ shot.position={X=focus.X+side*cfg.side,Y=focus.Y-cfg.back,Z=focus.Z+cfg.up}
+ shot.actor:K2_SetActorLocationAndRotation(shot.position,
+  self.c.UE.GetKismetMathLibrary():FindLookAtRotation(shot.position,focus),false,{},true)
+end
+-- Abrazo: Mono, ya en el puente, se pone frente a Six y la abraza.
+function N:secretHug(first)
+ local c=self.c
+ local actor=self:sixClone()
+ if not (actor and c.live(first)) then return end
+ self.monoClimb=nil
+ pcall(self.lift.release,self.lift)
+ self:setAnimRate(first,1)
+ local six=actor:K2_GetActorLocation()
+ local mono=first:K2_GetActorLocation()
+ local dx,dy=mono.X-six.X,mono.Y-six.Y
+ local length=math.sqrt(dx*dx+dy*dy)
+ if length<1 then dx,dy,length=0,1,1 end
+ local d=N.secretPose.hugDistance
+ local floorZ=(self.liftTarget or N.secretPose.floor).Z
+ local at={X=six.X+dx/length*d,Y=six.Y+dy/length*d,Z=floorZ+2}
+ pcall(function() first.CharacterMovement:SetMovementMode(1,0) end)
+ self:place(first,at)
+ first:K2_SetActorRotation({Pitch=0,Yaw=yawTo(at,six),Roll=0},true)
+ actor:K2_SetActorRotation({Pitch=0,Yaw=yawTo(six,at)+N.secretPose.sixYaw,Roll=0},true)
+ local loop=self:asset(sixKneelLoop)
+ if loop then
+  actor.SkeletalMeshComponent:PlayAnimation(loop,true)
+  actor.SkeletalMeshComponent:SetPlayRate(1)
+ end
+ local pose=self:asset(monoHug)
+ if pose and c.live(first.mAnimationOverrideComponent) then
+  first.mAnimationOverrideComponent:PlayAnimationSequenceOverride2(pose,1,true,0,.35,.35)
+ end
+ self:secretShot(six,at)
+ c.log('Final oculto: Mono abraza a Six; Mono en '..where(at)..', Six en '..where(six))
+end
+function N:secretRelease(first)
+ pcall(self.sceneClear,self)
+ pcall(self.lift.release,self.lift)
+ self:holdSequences(first,false)
+ if self.c.live(first) then self:setAnimRate(first,1) end
+end
+-- Escena propia completa (pak de The Second Shadow): un clip para Mono y otro
+-- para Six, animados juntos en Blender sobre el mismo origen. El origen es el
+-- punto del suelo del puente justo encima de donde Mono cuelga; las dos copias
+-- se colocan ahí con el mismo giro, así que encajan sin colocar nada a mano.
+N.customScene={
+ mono='/Game/Mods/TheSecondShadow/ANIM_SecretScene_Mono.ANIM_SecretScene_Mono',
+ six='/Game/Mods/TheSecondShadow/ANIM_SecretScene_Six.ANIM_SecretScene_Six',
+ yaw=0, -- igual que SCENE_YAW en tools/hug-animation
+}
+-- Medidas del puente para el script de Blender: se escriben en el log.
+function N:secretMeasure(first)
+ local c=self.c
+ local hang=first:K2_GetActorLocation()
+ local half,radius=0,0
+ pcall(function()
+  half=first.CapsuleComponent:GetScaledCapsuleHalfHeight()
+  radius=first.CapsuleComponent:GetScaledCapsuleRadius()
+ end)
+ local floor=self.liftTarget or N.secretPose.floor
+ local edge
+ pcall(function()
+  local movement=first.CharacterMovement
+  for step=0,40 do
+   local point={X=hang.X,Y=hang.Y+step*5,Z=floor.Z+4}
+   local hit={}
+   movement:K2_FindFloor(point,hit)
+   local distance=hit.bLineTrace and hit.LineDist or hit.FloorDist
+   if hit.bBlockingHit and hit.bWalkableFloor and type(distance)=='number' and distance<=60 then
+    edge=point.Y;break
+   end
+  end
+ end)
+ c.log(string.format('Final oculto: medidas cuelga=%s capsula=%.1f/%.1f suelo=%.1f borde=%s',
+  where(hang),half,radius,floor.Z-half,edge and string.format('%.1f',edge) or '?'))
+ local mesh=first.Mesh
+ pcall(function()
+  local r,l=mesh.RelativeRotation,mesh.RelativeLocation
+  c.log(string.format('Final oculto: malla de Mono relativa %.1f %.1f %.1f giro %.1f',l.X,l.Y,l.Z,r.Yaw))
+ end)
+ -- Esqueletos del juego: el proyecto de Unreal debe crearlos en estas rutas.
+ pcall(function()
+  local pull,rise=self:asset(pullPath),self:asset(risePath)
+  c.log('Final oculto: esqueleto de Six '..(pull and pull.Skeleton:GetFullName() or '?')
+   ..'; esqueleto de Mono '..(rise and rise.Skeleton:GetFullName() or '?'))
+ end)
+ pcall(function()
+  local six=self:findSix(first,self:asset(pullPath))
+  if six then
+   local r=six:K2_GetComponentRotation()
+   c.log('Final oculto: Six de la secuencia en '..where(six:K2_GetComponentLocation())
+    ..string.format(' giro %.1f',r.Yaw))
+  end
+ end)
+ return {X=hang.X,Y=hang.Y,Z=floor.Z-half}
+end
+local function copyMesh(world,class,source,at,rotation,c)
+ local actor=world:SpawnActor(class,at,rotation)
+ if not c.live(actor) then return end
+ local visual=actor.SkeletalMeshComponent
+ actor:SetActorEnableCollision(false)
+ visual:SetMobility(2)
+ visual:SetCollisionEnabled(0)
+ visual:SetSkeletalMesh(source.SkeletalMesh,false)
+ for i=0,source:GetNumMaterials()-1 do visual:SetMaterial(i,source:GetMaterial(i))end
+ return actor
+end
+-- Devuelve la duración de la escena, o nil si el pak no está instalado.
+function N:sceneStart(first,anchor)
+ local c=self.c
+ local monoClip,sixClip=self:asset(N.customScene.mono),self:asset(N.customScene.six)
+ if not (monoClip and sixClip) then return end
+ local class=StaticFindObject('/Script/Engine.SkeletalMeshActor')
+ local six=self:findSix(first,self:asset(pullPath))
+ if not (c.live(class) and six and c.live(first.Mesh)) then
+  c.log('Final oculto: no se pudo preparar la escena propia');return
+ end
+ local world=first:GetWorld()
+ local rotation={Pitch=0,Yaw=N.customScene.yaw,Roll=0}
+ local scene={actors={}}
+ self.secretScene=scene
+ local main=copyMesh(world,class,first.Mesh,anchor,rotation,c)
+ if not main then self:sceneClear();return end
+ scene.actors[#scene.actors+1]=main
+ -- Partes extra de Mono (si las tiene) siguen la pose de la malla principal.
+ local meshClass=StaticFindObject('/Script/Engine.SkeletalMeshComponent')
+ if c.live(meshClass) then
+  for _,part in ipairs(unwrapObjects(first:K2_GetComponentsByClass(meshClass)))do
+   if c.live(part) and not c.same(part,first.Mesh) and c.live(part.SkeletalMesh) and part:IsVisible() then
+    local extra=copyMesh(world,class,part,anchor,rotation,c)
+    if extra then
+     scene.actors[#scene.actors+1]=extra
+     extra:K2_AttachToActor(main,FName('None'),1,1,1,false)
+     extra.SkeletalMeshComponent:SetMasterPoseComponent(main.SkeletalMeshComponent,false)
+    end
+   end
+  end
+ end
+ local sixActor=copyMesh(world,class,six,anchor,rotation,c)
+ if not sixActor then self:sceneClear();return end
+ local time=now(c,first)
+ -- Reutiliza el ocultado de la Six del juego del rescate normal.
+ self.sixPull={asset=sixClip,startedAt=time,nextSearch=0,actor=sixActor,original=six,
+  visible=six.bVisible,hiddenInGame=six.bHiddenInGame,hiddenActors={},nextHideScan=time}
+ self:hideBridgeSix(self.sixPull,time)
+ scene.pawn=first
+ first:SetActorHiddenInGame(true)
+ main.SkeletalMeshComponent:PlayAnimation(monoClip,false)
+ sixActor.SkeletalMeshComponent:PlayAnimation(sixClip,false)
+ local length=math.max(tonumber(monoClip.SequenceLength) or 0,tonumber(sixClip.SequenceLength) or 0)
+ local shot=self.rescueCamera
+ if shot then shot.focus={X=anchor.X,Y=anchor.Y+25,Z=anchor.Z+35} end
+ c.log(string.format('Final oculto: escena propia de %.1f s en %s',length,where(anchor)))
+ return length
+end
+function N:sceneClear()
+ local scene=self.secretScene
+ self.secretScene=nil
+ if not scene then return end
+ for _,actor in ipairs(scene.actors)do
+  if self.c.live(actor) then pcall(function() actor:K2_DestroyActor() end) end
+ end
+ if self.c.live(scene.pawn) then pcall(function() scene.pawn:SetActorHiddenInGame(false) end) end
+end
+-- Lista de animaciones de Six y Mono del juego, para elegir mejores poses.
+function N:animationNames()
+ local c=self.c
+ local names,seen={},{}
+ local function add(text)
+  if type(text)=='string' and text~='' and not seen[text] then seen[text]=true;names[#names+1]=text end
+ end
+ local registry=FindFirstOf('AssetRegistryImpl')
+ if c.live(registry) then
+  for _,path in ipairs({'/Game/Characters/Six','/Game/Characters/Player','/Game/Characters/Mono'})do
+   local found={}
+   if pcall(function() registry:GetAssetsByPath(FName(path),found,true,false) end) then
+    for i=1,#found do
+     local entry=found[i]
+     if entry and type(entry.get)=='function' then entry=entry:get() end
+     pcall(function() add(entry.AssetClass:ToString()..' '..entry.ObjectPath:ToString()) end)
+    end
+   end
+  end
+ end
+ for _,asset in ipairs(FindAllOf('AnimSequence')or{})do
+  pcall(function()
+   local name=asset:GetFullName()
+   if name:find('/Characters/',1,true) then add(name) end
+  end)
+ end
+ table.sort(names)
+ return names
+end
+-- Final oculto: abrazo compuesto con poses del juego (hasta tener la animación
+-- propia). Mono queda agotado de rodillas y Six se agacha pegada a él, de frente.
+local hugMono='/Game/Characters/Player/Animations/ANIM_Player_ExhaustedCrouchIdle.ANIM_Player_ExhaustedCrouchIdle'
+local hugSix='/Game/Characters/Six/Animations/ANIM_Six_CrouchIdleShift.ANIM_Six_CrouchIdleShift'
+N.hugOffset={side=48,forward=34,meshYaw=-90}
+N.customHug={
+ mono='/Game/Mods/TheSecondShadow/ANIM_SecretHug_Mono.ANIM_SecretHug_Mono',
+ six='/Game/Mods/TheSecondShadow/ANIM_SecretHug_Six.ANIM_SecretHug_Six',
+ distance=30, -- igual que DISTANCE en tools/hug-animation/abrazo_blender.py
+}
+function N:composeHug(first,now)
+ local c=self.c
+ local scene=self.sixPull
+ local actor=scene and scene.actor
+ if not (c.live(first) and c.live(actor)) then return end
+ local hug=self.hug
+ if not hug or not c.same(hug.first,first) then
+  -- La subida terminó: nada más debe mover a Mono durante el abrazo. Si la
+  -- secuencia del juego lo dejó colgando o a medio subir, se le pone de pie sobre el puente.
+  self.monoClimb=nil
+  pcall(self.lift.release,self.lift)
+  local floor=self.liftTarget
+  local standing=first:K2_GetActorLocation()
+  if floor and (math.abs(standing.Z-floor.Z)>15 or (standing.X-floor.X)^2+(standing.Y-floor.Y)^2>60^2) then
+   first.mAnimationOverrideComponent:StopAnimationSequenceOverride(true)
+   first:K2_SetActorLocation({X=floor.X,Y=floor.Y,Z=floor.Z+2},false,{},true)
+   pcall(function() first.CharacterMovement:SetMovementMode(1,0) end)
+   c.log(string.format('Final oculto: Mono colocado sobre el puente (estaba en %.0f %.0f %.0f)',standing.X,standing.Y,standing.Z))
+  end
+  -- Animación propia (pak del mod) si está instalada; si no, poses del juego.
+  local customMono,customSix=self:asset(N.customHug.mono),self:asset(N.customHug.six)
+  local custom=customMono and customSix
+  local monoPose,sixPose=customMono or self:asset(hugMono),customSix or self:asset(hugSix)
+  if custom then c.log('Final oculto: usando la animacion propia del abrazo') end
+  if not (monoPose and sixPose) then c.log('Final oculto: faltan las poses del abrazo');self.hug={first=first};return end
+  local visual=actor.SkeletalMeshComponent
+  if custom then
+   -- Las dos animaciones propias se hacen en Blender con Six enfrente de Mono,
+   -- a N.customHug.distance; aquí se repite esa colocación.
+   local mesh=first.Mesh
+   local at=mesh:K2_GetComponentLocation()
+   local rotation=mesh:K2_GetComponentRotation()
+   local forward=first:GetActorForwardVector()
+   local d=N.customHug.distance
+   actor:K2_SetActorLocationAndRotation({X=at.X+forward.X*d,Y=at.Y+forward.Y*d,Z=at.Z},
+    {Pitch=rotation.Pitch,Yaw=(rotation.Yaw+180)%360,Roll=rotation.Roll},false,{},true)
+   visual:PlayAnimation(sixPose,false)
+   visual:SetPlayRate(1)
+   self.hug={first=first,pose=monoPose,length=tonumber(monoPose.SequenceLength) or 8,once=true}
+   hug=self.hug
+  else
+  local at=first:K2_GetActorLocation()
+  local forward=first:GetActorForwardVector()
+  local right={X=-forward.Y,Y=forward.X}
+  local o=N.hugOffset
+  local sixAt={X=at.X+right.X*o.side+forward.X*o.forward,Y=at.Y+right.Y*o.side+forward.Y*o.forward,
+   Z=first.Mesh:K2_GetComponentLocation().Z}
+  local toMono=math.deg(math.atan(at.Y-sixAt.Y,at.X-sixAt.X))
+  actor:K2_SetActorLocationAndRotation(sixAt,{Pitch=0,Yaw=toMono+o.meshYaw,Roll=0},false,{},true)
+  visual:PlayAnimation(sixPose,true)
+  visual:SetPlayRate(.8)
+  first:K2_SetActorRotation({Pitch=0,Yaw=(toMono+180)%360,Roll=0},true)
+  hug={first=first,pose=monoPose,length=tonumber(monoPose.SequenceLength) or 3}
+  self.hug=hug
+  c.log(string.format('Final oculto: abrazo compuesto; Six en %.0f %.0f %.0f mirando a %.0f',sixAt.X,sixAt.Y,sixAt.Z,toMono))
+ end
+ end
+ if hug.pose and (not hug.nextAt or now>=hug.nextAt) and c.live(first.mAnimationOverrideComponent) then
+  first.mAnimationOverrideComponent:PlayAnimationSequenceOverride2(hug.pose,1,false,0,hug.nextAt and 0 or .25,.25)
+  hug.nextAt=hug.once and math.huge or now+math.max(.5,hug.length-.05)
+ end
+end
+function N:clearHug()
+ local hug=self.hug
+ self.hug=nil
+ if hug and hug.pose and self.c.live(hug.first) and self.c.live(hug.first.mAnimationOverrideComponent) then
+  pcall(function() hug.first.mAnimationOverrideComponent:StopAnimationSequenceOverride(true) end)
+ end
+end
+-- Final oculto: acerca poco a poco el plano del rescate a los dos personajes.
+function N:pushIn(progress)
+ local shot=self.rescueCamera
+ if not (shot and self.c.live(shot.actor) and shot.position) then return end
+ local eased=progress*progress*(3-2*progress)
+ local from,to=shot.position,shot.focus
+ local amount=.38*eased
+ local at={X=from.X+(to.X-from.X)*amount,Y=from.Y+(to.Y-from.Y)*amount,Z=from.Z+(to.Z-from.Z)*amount-30*eased}
+ local rotation=self.c.UE.GetKismetMathLibrary():FindLookAtRotation(at,to)
+ shot.actor:K2_SetActorLocationAndRotation(at,rotation,false,{},true)
+end
+function N:fade(duration)
+ local pc=self.c.p1()
+ local manager=self.c.live(pc) and pc.PlayerCameraManager or nil
+ if not self.c.live(manager) then return end
+ manager:StartCameraFade(0,1,duration,{R=0,G=0,B=0,A=1},true,true)
+ self.faded=manager
+end
+function N:clearFade()
+ local manager=self.faded
+ self.faded=nil
+ if self.c.live(manager) then pcall(function() manager:StopCameraFade() end) end
+end
+function N:card(text)
+ local manager=FindFirstOf('WidgetManager')
+ local pc=self.c.p1()
+ local world=self.c.live(pc) and pc:GetWorld() or nil
+ if not (self.c.live(manager) and self.c.live(world)) then self.c.log(text);return end
+ manager:ShowHintWidget(world,FText(text),5)
+end
+local creditsPath='/Game/Blueprints/Widgets/Menues/WDG_CreditsScreen.WDG_CreditsScreen_C'
+function N:credits()
+ local c=self.c
+ local pc=c.p1()
+ if not c.live(pc) then return false end
+ local class=StaticFindObject(creditsPath)
+ if not c.live(class) then pcall(LoadAsset,creditsPath);class=StaticFindObject(creditsPath)end
+ local library=StaticFindObject('/Script/UMG.Default__WidgetBlueprintLibrary')
+ if not (c.live(class) and c.live(library)) then return false end
+ local widget=library:Create(pc,class,pc)
+ if not c.live(widget) then return false end
+ pcall(function() widget.AccessedFromMenu=false end)
+ widget:AddToViewport(100)
+ pcall(function() widget:SetKeyboardFocus() end)
+ self.creditsWidget=widget
+ return true
 end
 function N:releaseCamera()
  local shot=self.rescueCamera
@@ -230,7 +742,7 @@ function N:releaseCamera()
  end
  if c.live(shot.actor)then shot.actor:K2_DestroyActor()end
 end
-function N:pull(second)
+function N:pull(second,rate)
  local c=self.c
  local pull=self:asset(pullPath)
  local ledgeClass=StaticFindObject('/Script/Helios.LedgeClimbingInterface')
@@ -244,13 +756,15 @@ function N:pull(second)
  local now=c.UE.GetGameplayStatics():GetTimeSeconds(second)
  local origin=second:K2_GetActorLocation()
  local monoLength=tonumber(rise.SequenceLength)or 1.65
- local checked,lift=pcall(self.lift.prepare,self.lift,second,now,1.65)
+ local checked,lift=pcall(self.lift.prepare,self.lift,second,now,1.65/(rate or 1))
  if not checked then
   c.log('Puente final: error al comprobar el suelo de P2: '..tostring(lift))
   lift=nil
  end
+ -- El final oculto necesita saber dónde queda el suelo del puente.
+ self.liftTarget=lift and lift.plan and lift.plan.target or nil
  override:PlayAnimationSequenceOverride2(rise,nativeClimb and 2 or (lift and 0 or 2),false,0,.05,.1)
- self.sixPull={asset=pull,startedAt=now,nextSearch=0}
+ self.sixPull={asset=pull,startedAt=now,nextSearch=0,rate=rate}
  if nativeClimb then
   self.monoClimb={pawn=second,origin=origin,startedAt=now,lift=lift,
    deadline=math.min(1.2,math.max(.6,monoLength*.6)),latest=math.min(2,monoLength+.15)}
@@ -262,7 +776,7 @@ function N:pull(second)
    c.log('Puente final: error al iniciar la subida de P2: '..tostring(problem))
   end
  end
- return nativeClimb and math.max(monoLength,2.15)or 1.65
+ return (nativeClimb and math.max(monoLength,2.15)or 1.65)/(rate or 1)
 end
 function N:updateMonoClimb(pawn,now)
  local attempt=self.monoClimb
@@ -441,6 +955,47 @@ function N:api()
    self.cameraFailed=nil
    if not ok then c.log('Puente final: error al restaurar la camara: '..tostring(err))end
   end,
+  secretGrab=function(p)
+   local ok,result=pcall(self.secretGrab,self,p)
+   if not ok then c.log('Final oculto: error al sostener el agarre: '..tostring(result));return end
+   return result
+  end,
+  secretPull=function(p)
+   local ok,length=pcall(self.secretPull,self,p)
+   if not ok then c.log('Final oculto: error del tiron: '..tostring(length));return end
+   return length
+  end,
+  secretSixPose=function(kind,p)
+   local ok,length=pcall(self.secretSixPose,self,kind,p)
+   if not ok then c.log('Final oculto: error en la pose de Six: '..tostring(length));return end
+   return length
+  end,
+  secretHug=function(p)
+   local ok,err=pcall(self.secretHug,self,p)
+   if not ok then c.log('Final oculto: error del abrazo: '..tostring(err)) end
+  end,
+  secretRelease=function(p)pcall(self.secretRelease,self,p)end,
+  hug=function(p,now)
+   if self.hugFailed then return end
+   local ok,err=pcall(self.composeHug,self,p,now)
+   if not ok then self.hugFailed=true;c.log('Final oculto: error del abrazo: '..tostring(err)) end
+  end,
+  clearHug=function()pcall(self.clearHug,self);self.hugFailed=nil end,
+  pushIn=function(progress)
+   if self.cameraFailed then return end
+   local ok,err=pcall(self.pushIn,self,progress)
+   if not ok then c.log('Final oculto: error al acercar la camara: '..tostring(err)) end
+  end,
+  fade=function(duration)
+   local ok,err=pcall(self.fade,self,duration)
+   if not ok then c.log('Final oculto: error del fundido: '..tostring(err)) end
+  end,
+  clearFade=function()self:clearFade()end,
+  card=function(text)
+   local ok,err=pcall(self.card,self,text)
+   if not ok then c.log('Final oculto: error del texto: '..tostring(err)) end
+  end,
+  credits=function()return self:credits()end,
   stopSecond=function()c.driver:stop()end,parkSecond=function()c.driver:remove()end,
   reactPartner=function(caught,companion,role)
    local ok,clip=pcall(self.reactToBetrayal,self,caught,companion)
